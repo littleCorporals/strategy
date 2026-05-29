@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>A股策略后台</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260529-admin-console-1" />
-    <script src="/static/app.js?v=20260529-admin-console-1" defer></script>
+    <link rel="stylesheet" href="/static/styles.css?v=20260529-admin-console-5" />
+    <script src="/static/app.js?v=20260529-admin-console-5" defer></script>
   </head>
   <body>
     <main class="admin-shell">
@@ -19,26 +19,26 @@
         </div>
 
         <nav class="side-nav" aria-label="主菜单">
-          <a class="nav-item active" href="#market-section">
+          <button class="nav-item active" type="button" data-section="market-section">
             <i data-lucide="layout-dashboard"></i>
             <span>市场总览</span>
-          </a>
-          <a class="nav-item" href="#candidates-section">
+          </button>
+          <button class="nav-item" type="button" data-section="candidates-section">
             <i data-lucide="list-filter"></i>
             <span>候选列表</span>
-          </a>
-          <a class="nav-item" href="#stock-section">
+          </button>
+          <button class="nav-item" type="button" data-section="stock-section">
             <i data-lucide="scan-line"></i>
             <span>个股分析</span>
-          </a>
-          <a class="nav-item" href="#industry-section">
+          </button>
+          <button class="nav-item" type="button" data-section="industry-section">
             <i data-lucide="building-2"></i>
             <span>行业趋势</span>
-          </a>
-          <a class="nav-item" href="#tools-section">
+          </button>
+          <button class="nav-item" type="button" data-section="tools-section">
             <i data-lucide="database"></i>
             <span>数据工具</span>
-          </a>
+          </button>
           <a class="nav-item" href="/admin">
             <i data-lucide="settings-2"></i>
             <span>模型后台</span>

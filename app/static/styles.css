@@ -158,15 +158,19 @@ input {
 }
 
 .nav-item {
+  width: 100%;
   min-height: 42px;
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr);
   align-items: center;
+  justify-content: stretch;
   gap: 9px;
   padding: 0 10px;
   border: 1px solid transparent;
   border-radius: 6px;
+  background: transparent;
   color: rgba(255, 255, 255, 0.76);
+  text-align: left;
   text-decoration: none;
 }
 
