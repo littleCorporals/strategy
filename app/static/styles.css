@@ -695,9 +695,9 @@ canvas {
 }
 
 .info-layout {
-  column-count: 4;
+  column-count: 2;
   column-gap: 12px;
-  margin-top: 12px;
+  margin-top: 0;
 }
 
 .info-layout > .panel {
@@ -933,9 +933,6 @@ tr.selected td {
     grid-template-columns: 1fr;
   }
 
-  .info-layout {
-    column-count: 2;
-  }
 }
 
 @media (max-width: 980px) {

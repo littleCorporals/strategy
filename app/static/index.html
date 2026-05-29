@@ -168,6 +168,68 @@
               </div>
               <canvas id="klineChart" width="960" height="360" aria-label="价格走势"></canvas>
             </section>
+
+            <section class="info-layout">
+              <section class="panel" id="industry-section">
+                <header class="panel-head">
+                  <div>
+                    <span>Industry</span>
+                    <h3>行业趋势</h3>
+                  </div>
+                  <p id="industryInfo">等待行情</p>
+                </header>
+                <div class="industry-list" id="industryList"></div>
+              </section>
+
+              <section class="panel">
+                <header class="panel-head">
+                  <div>
+                    <span>Money Flow</span>
+                    <h3 id="moneyFlowTitle">等待资金数据</h3>
+                  </div>
+                  <p id="moneyFlowStrength">--</p>
+                </header>
+                <p id="moneyFlowSummary">选择股票后显示主力资金方向。</p>
+                <div class="money-grid">
+                  <div><span>主力净额</span><strong id="mainMoneyNet">--</strong></div>
+                  <div><span>超大单</span><strong id="extraLargeMoney">--</strong></div>
+                  <div><span>大单</span><strong id="largeMoney">--</strong></div>
+                  <div><span>总净流</span><strong id="totalMoneyNet">--</strong></div>
+                </div>
+                <div class="bar-list">
+                  <label><span>资金力度</span><b><i id="moneyStrengthBar"></i></b></label>
+                </div>
+              </section>
+
+              <section class="panel">
+                <header class="panel-head">
+                  <div>
+                    <span>Indicators</span>
+                    <h3>关键读数</h3>
+                  </div>
+                </header>
+                <div class="analysis-grid">
+                  <div><span>5日</span><strong id="trend5Metric">--</strong></div>
+                  <div><span>20日</span><strong id="trend20Metric">--</strong></div>
+                  <div><span>量能</span><strong id="volumeMetric">--</strong></div>
+                  <div><span>换手</span><strong id="turnoverMetric">--</strong></div>
+                  <div><span>PE</span><strong id="peMetric">--</strong></div>
+                  <div><span>PB</span><strong id="pbMetric">--</strong></div>
+                </div>
+                <p id="analysisNotes">选择股票后显示风险点。</p>
+              </section>
+
+              <section class="panel source-panel">
+                <header class="panel-head">
+                  <div>
+                    <span>Sources</span>
+                    <h3>消息材料</h3>
+                  </div>
+                  <p id="sourceInfo">暂无来源</p>
+                </header>
+                <div class="source-list" id="sourceList"></div>
+              </section>
+            </section>
           </section>
 
           <aside class="detail-rail" id="stock-section">
@@ -246,68 +308,6 @@
               <p class="risk-line" id="riskWarning">等待消息核验。</p>
             </section>
           </aside>
-        </section>
-
-        <section class="info-layout">
-          <section class="panel" id="industry-section">
-            <header class="panel-head">
-              <div>
-                <span>Industry</span>
-                <h3>行业趋势</h3>
-              </div>
-              <p id="industryInfo">等待行情</p>
-            </header>
-            <div class="industry-list" id="industryList"></div>
-          </section>
-
-          <section class="panel">
-            <header class="panel-head">
-              <div>
-                <span>Money Flow</span>
-                <h3 id="moneyFlowTitle">等待资金数据</h3>
-              </div>
-              <p id="moneyFlowStrength">--</p>
-            </header>
-            <p id="moneyFlowSummary">选择股票后显示主力资金方向。</p>
-            <div class="money-grid">
-              <div><span>主力净额</span><strong id="mainMoneyNet">--</strong></div>
-              <div><span>超大单</span><strong id="extraLargeMoney">--</strong></div>
-              <div><span>大单</span><strong id="largeMoney">--</strong></div>
-              <div><span>总净流</span><strong id="totalMoneyNet">--</strong></div>
-            </div>
-            <div class="bar-list">
-              <label><span>资金力度</span><b><i id="moneyStrengthBar"></i></b></label>
-            </div>
-          </section>
-
-          <section class="panel">
-            <header class="panel-head">
-              <div>
-                <span>Indicators</span>
-                <h3>关键读数</h3>
-              </div>
-            </header>
-            <div class="analysis-grid">
-              <div><span>5日</span><strong id="trend5Metric">--</strong></div>
-              <div><span>20日</span><strong id="trend20Metric">--</strong></div>
-              <div><span>量能</span><strong id="volumeMetric">--</strong></div>
-              <div><span>换手</span><strong id="turnoverMetric">--</strong></div>
-              <div><span>PE</span><strong id="peMetric">--</strong></div>
-              <div><span>PB</span><strong id="pbMetric">--</strong></div>
-            </div>
-            <p id="analysisNotes">选择股票后显示风险点。</p>
-          </section>
-
-          <section class="panel source-panel">
-            <header class="panel-head">
-              <div>
-                <span>Sources</span>
-                <h3>消息材料</h3>
-              </div>
-              <p id="sourceInfo">暂无来源</p>
-            </header>
-            <div class="source-list" id="sourceList"></div>
-          </section>
         </section>
       </section>
     </main>
