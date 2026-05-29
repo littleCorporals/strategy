@@ -5,9 +5,12 @@ __pycache__/
 .env.*
 .pytest_cache/
 .ruff_cache/
+.edge-profile/
 data_exports/
 data/
 *.log
 *.sqlite3
 *.sqlite3-*
 ui-check*.png
+ui-desktop.png
+ui-mobile.png

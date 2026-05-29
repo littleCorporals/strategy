@@ -10,7 +10,7 @@ class StatusResponse(BaseModel):
     sdk_available: bool
     token_configured: bool
     token_preview: str | None = None
-    proxy_url: str
+    proxy_url: str | None = None
     min_interval: float
     cache_ttl_seconds: int
     database: dict[str, Any]

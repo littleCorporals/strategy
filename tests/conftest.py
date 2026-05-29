@@ -20,6 +20,7 @@ def isolated_app(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Generator[t
     monkeypatch.setattr(config, "DB_PATH", db_path)
     monkeypatch.setattr(db_cache, "DB_PATH", db_path)
     monkeypatch.setattr(model_pipeline, "MODEL_ARTIFACT_DIR", tmp_path / "models")
+    monkeypatch.delenv("ADMIN_TOKEN", raising=False)
     db_cache._db_ready = False
     market_data._cache.clear()
     market_data._stock_basic_cache = None

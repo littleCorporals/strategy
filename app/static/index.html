@@ -3,250 +3,344 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>A股新手看盘台</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260528-beginner-1" />
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
-    <script src="/static/app.js?v=20260528-beginner-1" defer></script>
+    <title>A股策略后台</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260529-admin-console-1" />
+    <script src="/static/app.js?v=20260529-admin-console-1" defer></script>
   </head>
   <body>
-    <div class="screen">
-      <header class="topbar">
-        <div class="brandline">
-          <h1>A股新手看盘台</h1>
-          <span>行情 · 个股 · 资金 · 明日推演</span>
+    <main class="admin-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">ST</span>
+          <div>
+            <h1>策略后台</h1>
+            <p>本地投研控制台</p>
+          </div>
         </div>
-        <div class="top-actions">
-          <label class="date-field">
-            <span>交易日</span>
-            <input id="tradeDate" type="date" />
-          </label>
-          <button class="primary" id="queryBtn" type="button" title="刷新行情">
-            <i data-lucide="refresh-cw"></i>
-            <span>刷新</span>
-          </button>
-          <button id="exportBtn" type="button" title="导出明细">
-            <i data-lucide="download"></i>
-            <span>导出</span>
-          </button>
-          <button id="dataModalBtn" type="button" title="查看更多数据">
+
+        <nav class="side-nav" aria-label="主菜单">
+          <a class="nav-item active" href="#market-section">
+            <i data-lucide="layout-dashboard"></i>
+            <span>市场总览</span>
+          </a>
+          <a class="nav-item" href="#candidates-section">
+            <i data-lucide="list-filter"></i>
+            <span>候选列表</span>
+          </a>
+          <a class="nav-item" href="#stock-section">
+            <i data-lucide="scan-line"></i>
+            <span>个股分析</span>
+          </a>
+          <a class="nav-item" href="#industry-section">
+            <i data-lucide="building-2"></i>
+            <span>行业趋势</span>
+          </a>
+          <a class="nav-item" href="#tools-section">
             <i data-lucide="database"></i>
-            <span>数据</span>
-          </button>
-          <button id="backtestModalBtn" type="button" title="历史策略推演">
-            <i data-lucide="flask-conical"></i>
-            <span>推演</span>
-          </button>
-          <div class="status" id="statusBadge">
+            <span>数据工具</span>
+          </a>
+          <a class="nav-item" href="/admin">
+            <i data-lucide="settings-2"></i>
+            <span>模型后台</span>
+          </a>
+        </nav>
+
+        <div class="side-footer">
+          <div class="status-pill" id="statusBadge">
             <span class="dot"></span>
             <span>检查行情</span>
           </div>
         </div>
-      </header>
+      </aside>
 
-      <main class="dashboard">
-        <section class="market-strip">
-          <div class="market-answer" id="marketAnswer">
-            <span class="step-label" id="dataDateLabel">等待交易日</span>
-            <div class="answer-line">
-              <strong id="actionLabel">等待数据</strong>
-              <span id="actionTag">--</span>
+      <section class="content">
+        <header class="topbar">
+          <div class="page-title">
+            <span>Market Console</span>
+            <h2>A股策略后台</h2>
+            <p id="headerSubtitle">等待行情数据</p>
+          </div>
+          <div class="toolbar">
+            <label class="date-control">
+              <span>交易日</span>
+              <input id="tradeDate" type="date" />
+            </label>
+            <button class="primary" id="queryBtn" type="button" title="刷新行情">
+              <i data-lucide="refresh-cw"></i>
+              <span>刷新</span>
+            </button>
+            <button id="exportBtn" type="button" title="导出 CSV">
+              <i data-lucide="download"></i>
+              <span>导出</span>
+            </button>
+            <button id="dataModalBtn" type="button" title="接口查询">
+              <i data-lucide="database"></i>
+              <span>查询</span>
+            </button>
+            <button id="backtestModalBtn" type="button" title="历史推演">
+              <i data-lucide="chart-no-axes-combined"></i>
+              <span>推演</span>
+            </button>
+            <a class="admin-link" href="/admin" title="模型后台">
+              <i data-lucide="settings-2"></i>
+              <span>模型</span>
+            </a>
+          </div>
+        </header>
+
+        <section class="overview" id="market-section">
+          <section class="decision-panel" id="marketAnswer">
+            <div>
+              <span id="dataDateLabel">等待交易日</span>
+              <h3 id="actionLabel">等待数据</h3>
             </div>
-            <p id="actionReason">打开页面后会自动加载最近有数据的交易日。</p>
-          </div>
-          <div class="stat up">
-            <span>上涨</span>
-            <strong id="upMetric">--</strong>
-          </div>
-          <div class="stat down">
-            <span>下跌</span>
-            <strong id="downMetric">--</strong>
-          </div>
-          <div class="stat">
-            <span>平均涨跌</span>
-            <strong id="avgMetric">--</strong>
-          </div>
-          <div class="stat">
-            <span>成交额</span>
-            <strong id="amountMetric">--</strong>
-          </div>
-          <div class="breadth">
-            <span>市场宽度</span>
-            <div class="breadth-track"><b id="breadthBar"></b></div>
-            <strong id="breadthText">--</strong>
-          </div>
+            <div class="decision-copy">
+              <strong id="actionTag">--</strong>
+              <p id="actionReason">打开后会自动读取最近可用交易日。</p>
+            </div>
+          </section>
+
+          <section class="metric-strip" aria-label="市场概览">
+            <div class="metric up">
+              <span>上涨家数</span>
+              <strong id="upMetric">--</strong>
+            </div>
+            <div class="metric down">
+              <span>下跌家数</span>
+              <strong id="downMetric">--</strong>
+            </div>
+            <div class="metric">
+              <span>平均涨跌</span>
+              <strong id="avgMetric">--</strong>
+            </div>
+            <div class="metric">
+              <span>成交额</span>
+              <strong id="amountMetric">--</strong>
+            </div>
+            <div class="metric breadth">
+              <span id="breadthText">市场宽度 --</span>
+              <b><i id="breadthBar"></i></b>
+            </div>
+          </section>
         </section>
 
-        <section class="workspace">
-          <aside class="left-rail">
-            <section class="panel candidates-card">
-              <div class="panel-head">
-                <div>
-                  <span class="step-label">先看这里</span>
-                  <h2>候选股票</h2>
-                </div>
-                <p id="candidateInfo">等待行情</p>
+        <section class="console-layout">
+          <section class="panel table-panel" id="candidates-section">
+            <header class="panel-head">
+              <div>
+                <span>Candidates</span>
+                <h3>候选列表</h3>
               </div>
-              <div class="segment" role="tablist">
-                <button class="active" data-bucket="priority" type="button">优先</button>
-                <button data-bucket="pullback" type="button">回踩</button>
-                <button data-bucket="active" type="button">活跃</button>
-                <button data-bucket="avoid" type="button">回避</button>
+              <p id="candidateInfo">等待行情</p>
+            </header>
+            <div class="segments" role="tablist" aria-label="候选分类">
+              <button class="active" data-bucket="priority" type="button">优先</button>
+              <button data-bucket="pullback" type="button">回踩</button>
+              <button data-bucket="active" type="button">活跃</button>
+              <button data-bucket="avoid" type="button">回避</button>
+            </div>
+            <div class="candidate-table">
+              <div class="candidate-head" aria-hidden="true">
+                <span>股票</span>
+                <span>行业</span>
+                <span>涨跌幅</span>
+                <span>成交额</span>
+                <span>评分</span>
+                <span>判断</span>
               </div>
-              <div class="candidate-list" id="candidateList"></div>
-            </section>
+              <div class="candidate-list" id="candidateList" role="table" aria-label="候选股票"></div>
+            </div>
+          </section>
 
-            <section class="panel industry-card">
-              <div class="mini-head">
+          <aside class="detail-rail" id="stock-section">
+            <section class="panel selected-panel">
+              <header class="panel-head">
                 <div>
-                  <span class="step-label">行业趋势</span>
-                  <h2>强行业</h2>
+                  <span>Selected</span>
+                  <h3 id="selectedCode">未选择</h3>
                 </div>
-                <p id="industryInfo">等待行情</p>
-              </div>
-              <div class="industry-list" id="industryList"></div>
-            </section>
-          </aside>
-
-          <section class="center-stage">
-            <section class="panel chart-card">
-              <div class="stock-header">
-                <div>
-                  <span class="step-label">选中股票</span>
-                  <h2 id="selectedCode">未选择</h2>
-                </div>
-                <button class="icon-btn" id="addSelectedBtn" type="button" title="加入观察">
+                <button id="addSelectedBtn" type="button" title="加入观察">
                   <i data-lucide="star"></i>
                 </button>
-              </div>
-              <div class="quote-row">
+              </header>
+              <div class="quote-grid">
                 <div><span>收盘</span><strong id="selectedClose">--</strong></div>
                 <div><span>涨跌</span><strong id="selectedPct">--</strong></div>
                 <div><span>成交额</span><strong id="selectedAmount">--</strong></div>
                 <div><span>处理</span><strong id="decisionBadge">--</strong></div>
               </div>
-              <div class="chart-head">
-                <div>
-                  <h2>价格走势</h2>
-                  <p id="historyInfo">选择股票后加载最近 80 个交易日。</p>
-                </div>
-                <div class="legend">
-                  <span><b class="swatch red"></b>涨</span>
-                  <span><b class="swatch green"></b>跌</span>
-                  <span><b class="swatch line"></b>5日线</span>
-                </div>
-              </div>
-              <canvas id="klineChart" width="980" height="360" aria-label="价格走势"></canvas>
             </section>
 
-            <section class="panel plan-panel forecast-panel">
-              <div class="plan-copy">
-                <span class="step-label">明日推演</span>
-                <h2 id="planTitle">先选择一只股票</h2>
-                <p id="planReason">系统会把行情、趋势和资金流合成一句人话结论。</p>
-                <em id="planWarning">这里只是基于接口数据的推算，不是承诺涨跌。</em>
-              </div>
+            <section class="panel plan-panel">
+              <header class="panel-head">
+                <div>
+                  <span>Plan</span>
+                  <h3 id="planTitle">先选择一只股票</h3>
+                </div>
+              </header>
+              <p id="planReason">计划会结合趋势、资金、估值和压力位生成。</p>
               <div class="plan-grid">
                 <div><span>观察买点</span><strong id="planEntry">--</strong></div>
                 <div><span>放弃线</span><strong id="planStop">--</strong></div>
                 <div><span>压力目标</span><strong id="planTarget">--</strong></div>
-                <div><span>建议仓位</span><strong id="planPosition">--</strong></div>
+                <div><span>仓位</span><strong id="planPosition">--</strong></div>
               </div>
-              <div class="analysis-grid">
-                <div><span>5日</span><strong id="trend5Metric">--</strong></div>
-                <div><span>20日</span><strong id="trend20Metric">--</strong></div>
-                <div><span>量能</span><strong id="volumeMetric">--</strong></div>
-                <div><span>换手</span><strong id="turnoverMetric">--</strong></div>
-                <div><span>PE</span><strong id="peMetric">--</strong></div>
-                <div><span>PB</span><strong id="pbMetric">--</strong></div>
-              </div>
-              <p id="analysisNotes">选择股票后显示推荐理由和风险点。</p>
-            </section>
-          </section>
-
-          <aside class="right-rail">
-            <section class="panel action-card">
-              <div class="decision-card">
-                <span>AI 结论</span>
-                <strong id="recommendTitle">等待推荐</strong>
-                <p id="recommendReason">先核验消息来源，再结合行情、趋势和资金判断。</p>
-              </div>
-              <div class="decision-points">
-                <div><span>明日倾向</span><strong id="forecastMetric">--</strong></div>
-                <div><span>趋势</span><strong id="trendMetric">--</strong></div>
-                <div><span>支撑</span><strong id="supportMetric">--</strong></div>
-                <div><span>压力</span><strong id="resistanceMetric">--</strong></div>
-              </div>
-              <p class="warning" id="riskWarning">等待消息核验。</p>
-              <div class="analysis-bars">
-                <div><span>趋势强度</span><b><i id="trendBar"></i></b></div>
-                <div><span>推荐信心</span><b><i id="confidenceBar"></i></b></div>
-              </div>
+              <em id="planWarning">所有结论只作为复盘和计划参考。</em>
             </section>
 
-            <section class="panel money-card">
-              <div class="mini-head">
+            <section class="panel tool-panel" id="tools-section">
+              <header class="panel-head">
                 <div>
-                  <span class="step-label">主力资金</span>
-                  <h2 id="moneyFlowTitle">等待资金数据</h2>
+                  <span>Tools</span>
+                  <h3>数据工具</h3>
                 </div>
-                <p id="moneyFlowStrength">--</p>
+              </header>
+              <div class="tool-actions">
+                <button id="toolDataBtn" type="button" title="接口查询">
+                  <i data-lucide="database"></i>
+                  <span>接口查询</span>
+                </button>
+                <button id="toolBacktestBtn" type="button" title="历史推演">
+                  <i data-lucide="play"></i>
+                  <span>历史推演</span>
+                </button>
               </div>
-              <p id="moneyFlowSummary">选择股票后显示大单和超大单推算出的主力方向。</p>
-              <div class="money-grid">
-                <div><span>主力净额</span><strong id="mainMoneyNet">--</strong></div>
-                <div><span>超大单</span><strong id="extraLargeMoney">--</strong></div>
-                <div><span>大单</span><strong id="largeMoney">--</strong></div>
-                <div><span>总净流</span><strong id="totalMoneyNet">--</strong></div>
-              </div>
-              <div class="analysis-bars">
-                <div><span>资金力度</span><b><i id="moneyStrengthBar"></i></b></div>
-              </div>
-            </section>
-
-            <section class="panel source-card">
-              <div class="mini-head">
-                <div>
-                  <span class="step-label">消息来源</span>
-                  <h2>验证材料</h2>
-                </div>
-                <p id="sourceInfo">暂无来源</p>
-              </div>
-              <div class="source-list" id="sourceList"></div>
             </section>
           </aside>
         </section>
-      </main>
-    </div>
+
+        <section class="lower-layout">
+          <section class="panel chart-panel" id="analysis-section">
+            <header class="panel-head">
+              <div>
+                <span>Price</span>
+                <h3>价格走势</h3>
+              </div>
+              <p id="historyInfo">选择股票后加载走势</p>
+            </header>
+            <div class="legend">
+              <span><b class="red"></b>上涨</span>
+              <span><b class="green"></b>下跌</span>
+              <span><b class="blue"></b>5日线</span>
+            </div>
+            <canvas id="klineChart" width="960" height="360" aria-label="价格走势"></canvas>
+          </section>
+
+          <section class="panel recommendation-panel">
+            <header class="panel-head">
+              <div>
+                <span>Decision</span>
+                <h3 id="recommendTitle">等待推荐</h3>
+              </div>
+            </header>
+            <p id="recommendReason">消息源和行情确认后显示。</p>
+            <div class="signal-grid">
+              <div><span>明日倾向</span><strong id="forecastMetric">--</strong></div>
+              <div><span>趋势</span><strong id="trendMetric">--</strong></div>
+              <div><span>支撑</span><strong id="supportMetric">--</strong></div>
+              <div><span>压力</span><strong id="resistanceMetric">--</strong></div>
+            </div>
+            <div class="bar-list">
+              <label><span>趋势强度</span><b><i id="trendBar"></i></b></label>
+              <label><span>推荐信心</span><b><i id="confidenceBar"></i></b></label>
+            </div>
+            <p class="risk-line" id="riskWarning">等待消息核验。</p>
+          </section>
+        </section>
+
+        <section class="info-layout">
+          <section class="panel" id="industry-section">
+            <header class="panel-head">
+              <div>
+                <span>Industry</span>
+                <h3>行业趋势</h3>
+              </div>
+              <p id="industryInfo">等待行情</p>
+            </header>
+            <div class="industry-list" id="industryList"></div>
+          </section>
+
+          <section class="panel">
+            <header class="panel-head">
+              <div>
+                <span>Money Flow</span>
+                <h3 id="moneyFlowTitle">等待资金数据</h3>
+              </div>
+              <p id="moneyFlowStrength">--</p>
+            </header>
+            <p id="moneyFlowSummary">选择股票后显示主力资金方向。</p>
+            <div class="money-grid">
+              <div><span>主力净额</span><strong id="mainMoneyNet">--</strong></div>
+              <div><span>超大单</span><strong id="extraLargeMoney">--</strong></div>
+              <div><span>大单</span><strong id="largeMoney">--</strong></div>
+              <div><span>总净流</span><strong id="totalMoneyNet">--</strong></div>
+            </div>
+            <div class="bar-list">
+              <label><span>资金力度</span><b><i id="moneyStrengthBar"></i></b></label>
+            </div>
+          </section>
+
+          <section class="panel">
+            <header class="panel-head">
+              <div>
+                <span>Indicators</span>
+                <h3>关键读数</h3>
+              </div>
+            </header>
+            <div class="analysis-grid">
+              <div><span>5日</span><strong id="trend5Metric">--</strong></div>
+              <div><span>20日</span><strong id="trend20Metric">--</strong></div>
+              <div><span>量能</span><strong id="volumeMetric">--</strong></div>
+              <div><span>换手</span><strong id="turnoverMetric">--</strong></div>
+              <div><span>PE</span><strong id="peMetric">--</strong></div>
+              <div><span>PB</span><strong id="pbMetric">--</strong></div>
+            </div>
+            <p id="analysisNotes">选择股票后显示风险点。</p>
+          </section>
+
+          <section class="panel source-panel">
+            <header class="panel-head">
+              <div>
+                <span>Sources</span>
+                <h3>消息材料</h3>
+              </div>
+              <p id="sourceInfo">暂无来源</p>
+            </header>
+            <div class="source-list" id="sourceList"></div>
+          </section>
+        </section>
+      </section>
+    </main>
 
     <div class="modal-layer" id="dataModal" hidden>
-      <section class="data-dialog" role="dialog" aria-modal="true" aria-labelledby="dataDialogTitle">
+      <section class="dialog data-dialog" role="dialog" aria-modal="true" aria-labelledby="dataDialogTitle">
         <header class="dialog-head">
           <div>
-            <span class="step-label">扩展数据</span>
+            <span>扩展数据</span>
             <h2 id="dataDialogTitle">接口查询</h2>
           </div>
-          <button class="icon-btn" id="closeDataModalBtn" type="button" title="关闭">
+          <button id="closeDataModalBtn" type="button" title="关闭">
             <i data-lucide="x"></i>
           </button>
         </header>
-        <div class="interface-tabs" role="tablist">
+        <div class="interface-tabs" role="tablist" aria-label="接口类型">
           <button class="active" data-interface="daily_basic" type="button">指标</button>
           <button data-interface="moneyflow" type="button">资金</button>
           <button data-interface="daily" type="button">日线</button>
           <button data-interface="stock_basic" type="button">资料</button>
         </div>
         <div class="query-grid">
-          <label class="field"><span>股票</span><input id="modalTsCode" type="text" /></label>
-          <label class="field"><span>日期</span><input id="modalTradeDate" type="date" /></label>
-          <label class="field"><span>开始</span><input id="modalStartDate" type="date" /></label>
-          <label class="field"><span>结束</span><input id="modalEndDate" type="date" /></label>
+          <label><span>股票</span><input id="modalTsCode" type="text" placeholder="000001.SZ" /></label>
+          <label><span>日期</span><input id="modalTradeDate" type="date" /></label>
+          <label><span>开始</span><input id="modalStartDate" type="date" /></label>
+          <label><span>结束</span><input id="modalEndDate" type="date" /></label>
           <button class="primary" id="modalQueryBtn" type="button">
             <i data-lucide="search"></i>
             <span>查询</span>
           </button>
         </div>
         <div class="dialog-status" id="modalStatus">等待查询</div>
-        <div class="modal-table-wrap">
+        <div class="table-wrap">
           <table>
             <thead id="modalTableHead"></thead>
             <tbody id="modalTableBody"></tbody>
@@ -256,43 +350,40 @@
     </div>
 
     <div class="modal-layer" id="backtestModal" hidden>
-      <section class="backtest-dialog" role="dialog" aria-modal="true" aria-labelledby="backtestDialogTitle">
+      <section class="dialog backtest-dialog" role="dialog" aria-modal="true" aria-labelledby="backtestDialogTitle">
         <header class="dialog-head">
           <div>
-            <span class="step-label">历史推演</span>
+            <span>历史推演</span>
             <h2 id="backtestDialogTitle">短线策略验证</h2>
           </div>
-          <button class="icon-btn" id="closeBacktestModalBtn" type="button" title="关闭">
+          <button id="closeBacktestModalBtn" type="button" title="关闭">
             <i data-lucide="x"></i>
           </button>
         </header>
         <div class="backtest-toolbar">
-          <label class="field"><span>结束日</span><input id="backtestEndDate" type="date" /></label>
-          <label class="field"><span>交易日数</span><input id="backtestDays" type="number" min="4" max="20" value="4" /></label>
-          <label class="field"><span>每日候选</span><input id="backtestLimit" type="number" min="3" max="15" value="8" /></label>
+          <label><span>结束日</span><input id="backtestEndDate" type="date" /></label>
+          <label><span>交易日数</span><input id="backtestDays" type="number" min="4" max="20" value="4" /></label>
+          <label><span>每日候选</span><input id="backtestLimit" type="number" min="3" max="15" value="8" /></label>
           <button class="primary" id="runBacktestBtn" type="button">
             <i data-lucide="play"></i>
             <span>开始推演</span>
           </button>
         </div>
-        <div class="backtest-summary">
-          <div class="backtest-verdict">
+        <section class="backtest-summary">
+          <div>
             <span>策略结论</span>
-            <strong id="backtestTitle">等待推演</strong>
-            <p id="backtestText">会用历史因子、量比、换手、市值、均线和次日表现验证推荐策略；首次运行会比较慢，结果会缓存。</p>
+            <h2 id="backtestTitle">等待推演</h2>
+            <p id="backtestText">运行后展示策略表现。</p>
           </div>
           <div class="backtest-rules" id="backtestRules"></div>
-        </div>
-        <div class="backtest-grid">
-          <section class="backtest-section">
-            <div class="mini-head">
-              <div>
-                <span class="step-label">策略对比</span>
-                <h2>胜率与风险</h2>
-              </div>
+        </section>
+        <section class="backtest-grid">
+          <div>
+            <div class="table-title">
+              <h3>策略对比</h3>
               <p id="backtestMeta">未运行</p>
             </div>
-            <div class="strategy-table-wrap">
+            <div class="table-wrap">
               <table>
                 <thead>
                   <tr>
@@ -308,18 +399,15 @@
                 <tbody id="backtestTableBody"></tbody>
               </table>
             </div>
-          </section>
-          <section class="backtest-section">
-            <div class="mini-head">
-              <div>
-                <span class="step-label">近期样本</span>
-                <h2>次日验证</h2>
-              </div>
+          </div>
+          <div>
+            <div class="table-title">
+              <h3>近期样本</h3>
               <p id="backtestExampleInfo">暂无</p>
             </div>
             <div class="backtest-examples" id="backtestExamples"></div>
-          </section>
-        </div>
+          </div>
+        </section>
       </section>
     </div>
 

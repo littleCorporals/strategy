@@ -15,7 +15,9 @@ def test_status_initializes_temp_database(isolated_app: tuple[TestClient, Path])
     payload = response.json()
     assert payload["ok"] is True
     assert payload["database_ready"] is True
-    assert Path(payload["database"]["path"]) == db_path
+    assert payload["database"]["path"] == "local sqlite cache"
+    assert payload["token_preview"] is None
+    assert payload["proxy_url"] is None
     assert db_path.exists()
 
     from app.db import cache as db_cache
@@ -24,6 +26,14 @@ def test_status_initializes_temp_database(isolated_app: tuple[TestClient, Path])
         versions = [row["version"] for row in conn.execute("SELECT version FROM schema_migrations")]
 
     assert "0001_initial_schema" in versions
+
+
+def test_admin_api_rejects_non_loopback_clients(isolated_app: tuple[TestClient, Path]) -> None:
+    client, _db_path = isolated_app
+
+    response = client.get("/api/admin/overview", headers={"host": "example.test"})
+
+    assert response.status_code == 403
 
 
 def test_daily_uses_database_before_online_fetch(
@@ -265,6 +275,28 @@ def test_rejected_model_cannot_be_activated(isolated_app: tuple[TestClient, Path
     assert reject.status_code == 200
     assert reject.json()["item"]["status"] == "rejected"
     assert activate.status_code == 400
+
+
+def test_prediction_rejects_artifact_outside_model_directory(isolated_app: tuple[TestClient, Path]) -> None:
+    client, db_path = isolated_app
+
+    model = client.post(
+        "/api/admin/models",
+        json={
+            "name": "unsafe-artifact",
+            "feature_set": "short_swing_v1",
+            "label_set": "next_high_3pct_v1",
+            "artifact_path": str(db_path),
+        },
+    ).json()["item"]
+
+    assert client.post(f"/api/admin/models/{model['model_id']}/approve", json={}).status_code == 200
+    assert client.post(f"/api/admin/models/{model['model_id']}/activate").status_code == 200
+
+    response = client.post("/api/admin/predictions/run", json={"trade_date": "20240109"})
+
+    assert response.status_code == 400
+    assert "local model directory" in response.json()["detail"]
 
 
 def test_training_run_executes_pipeline_and_registers_candidate_model(

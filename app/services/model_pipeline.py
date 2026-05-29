@@ -91,9 +91,13 @@ def _load_artifact(model: dict[str, Any]) -> dict[str, Any]:
     if not path:
         raise ValueError("模型缺少 artifact_path")
     artifact_path = Path(str(path))
-    if not artifact_path.exists():
+    allowed_dir = Path(MODEL_ARTIFACT_DIR).resolve()
+    resolved_path = artifact_path.resolve()
+    if not resolved_path.is_relative_to(allowed_dir):
+        raise ValueError("Model artifact must be stored in the local model directory.")
+    if not resolved_path.exists():
         raise ValueError("模型 artifact 不存在")
-    return json.loads(artifact_path.read_text(encoding="utf-8"))
+    return json.loads(resolved_path.read_text(encoding="utf-8"))
 
 
 def _history_by_code(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:

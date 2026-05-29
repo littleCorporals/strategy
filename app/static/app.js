@@ -1,9 +1,9 @@
 const DEFAULT_FIELDS = "ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount";
 const STORAGE_KEYS = {
-  watchlist: "simpleDesk.watchlist",
-  lastDaily: "simpleDesk.lastDaily.cn.v2",
+  watchlist: "strategyDesk.watchlist.v3",
+  lastDaily: "strategyDesk.lastDaily.v3",
 };
-const CANDIDATE_PAGE_SIZE = 12;
+const CANDIDATE_PAGE_SIZE = 14;
 
 const state = {
   rows: [],
@@ -11,36 +11,22 @@ const state = {
   history: [],
   selected: null,
   activeBucket: "priority",
-  sortKey: "score",
-  sortDirection: "desc",
   watchlist: [],
   basicMap: {},
-  analysis: null,
-  recommendation: null,
   recommendations: [],
   industryTrends: [],
-  backtest: null,
-  tradeDate: "",
-  dataSource: "",
-  databaseCached: false,
   recommendationStatus: "idle",
   recommendationError: "",
+  tradeDate: "",
+  dataSource: "",
   loadError: "",
   candidateVisible: CANDIDATE_PAGE_SIZE,
   activeInterface: "daily_basic",
+  backtest: null,
 };
 
 const els = {};
-const COLUMN_LABELS = {
-  name: "股票名称",
-  ts_code: "代码",
-  industry: "行业",
-  close: "收盘价",
-  pct_chg: "涨跌幅",
-  amount: "成交额",
-  score: "评分",
-  signal: "信号",
-};
+
 const MODAL_COLUMNS = {
   ts_code: "代码",
   trade_date: "日期",
@@ -75,6 +61,7 @@ const MODAL_COLUMNS = {
   sell_elg_amount: "超大单卖出",
   net_mf_amount: "净流入",
 };
+
 const INTERFACE_NAMES = {
   daily_basic: "指标",
   moneyflow: "资金",
@@ -82,8 +69,142 @@ const INTERFACE_NAMES = {
   stock_basic: "资料",
 };
 
+const ICONS = {
+  "layout-dashboard": [
+    ["rect", { x: "3", y: "3", width: "7", height: "7", rx: "1" }],
+    ["rect", { x: "14", y: "3", width: "7", height: "7", rx: "1" }],
+    ["rect", { x: "14", y: "14", width: "7", height: "7", rx: "1" }],
+    ["rect", { x: "3", y: "14", width: "7", height: "7", rx: "1" }],
+  ],
+  "list-filter": [
+    ["path", { d: "M3 6h18" }],
+    ["path", { d: "M7 12h10" }],
+    ["path", { d: "M10 18h4" }],
+  ],
+  "scan-line": [
+    ["path", { d: "M3 7V5a2 2 0 0 1 2-2h2" }],
+    ["path", { d: "M17 3h2a2 2 0 0 1 2 2v2" }],
+    ["path", { d: "M21 17v2a2 2 0 0 1-2 2h-2" }],
+    ["path", { d: "M7 21H5a2 2 0 0 1-2-2v-2" }],
+    ["path", { d: "M7 12h10" }],
+  ],
+  "building-2": [
+    ["path", { d: "M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18" }],
+    ["path", { d: "M6 12H4a2 2 0 0 0-2 2v8" }],
+    ["path", { d: "M18 9h2a2 2 0 0 1 2 2v11" }],
+    ["path", { d: "M10 6h4" }],
+    ["path", { d: "M10 10h4" }],
+    ["path", { d: "M10 14h4" }],
+    ["path", { d: "M10 18h4" }],
+  ],
+  database: [
+    ["ellipse", { cx: "12", cy: "5", rx: "8", ry: "3" }],
+    ["path", { d: "M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5" }],
+    ["path", { d: "M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" }],
+  ],
+  "settings-2": [
+    ["path", { d: "M20 7h-9" }],
+    ["path", { d: "M14 17H5" }],
+    ["circle", { cx: "17", cy: "17", r: "3" }],
+    ["circle", { cx: "7", cy: "7", r: "3" }],
+  ],
+  "refresh-cw": [
+    ["path", { d: "M21 12a9 9 0 0 1-9 9 9.8 9.8 0 0 1-6.9-2.9" }],
+    ["path", { d: "M3 12a9 9 0 0 1 9-9 9.8 9.8 0 0 1 6.9 2.9" }],
+    ["path", { d: "M21 3v6h-6" }],
+    ["path", { d: "M3 21v-6h6" }],
+  ],
+  download: [
+    ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }],
+    ["path", { d: "M7 10l5 5 5-5" }],
+    ["path", { d: "M12 15V3" }],
+  ],
+  "chart-no-axes-combined": [
+    ["path", { d: "M12 16v5" }],
+    ["path", { d: "M16 14v7" }],
+    ["path", { d: "M20 10v11" }],
+    ["path", { d: "M4 20l5-5 4 4 7-7" }],
+  ],
+  star: [
+    ["path", { d: "M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21 7 14.2 2 9.3l6.9-1L12 2z" }],
+  ],
+  play: [
+    ["path", { d: "M6 3l15 9-15 9V3z" }],
+  ],
+  search: [
+    ["circle", { cx: "11", cy: "11", r: "8" }],
+    ["path", { d: "M21 21l-4.3-4.3" }],
+  ],
+  x: [
+    ["path", { d: "M18 6L6 18" }],
+    ["path", { d: "M6 6l12 12" }],
+  ],
+};
+
 function qs(id) {
   return document.getElementById(id);
+}
+
+function text(value, fallback = "--") {
+  if (value === null || value === undefined || value === "") return fallback;
+  return String(value);
+}
+
+function setText(id, value, fallback = "--") {
+  if (els[id]) els[id].textContent = text(value, fallback);
+}
+
+function iconRefresh() {
+  document.querySelectorAll("i[data-lucide]").forEach((node) => {
+    if (node.dataset.iconReady === "true") return;
+    const name = node.dataset.lucide;
+    const shapes = ICONS[name];
+    if (!shapes) return;
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    shapes.forEach(([tag, attrs]) => {
+      const shape = document.createElementNS("http://www.w3.org/2000/svg", tag);
+      Object.entries(attrs).forEach(([key, value]) => shape.setAttribute(key, value));
+      svg.appendChild(shape);
+    });
+    node.replaceChildren(svg);
+    node.dataset.iconReady = "true";
+  });
+}
+
+function clearNode(node) {
+  while (node.firstChild) node.removeChild(node.firstChild);
+}
+
+function el(tag, options = {}, children = []) {
+  const node = document.createElement(tag);
+  if (options.className) node.className = options.className;
+  if (options.text !== undefined) node.textContent = text(options.text, "");
+  if (options.title !== undefined) node.title = text(options.title, "");
+  if (options.href) {
+    node.href = options.href;
+    node.target = "_blank";
+    node.rel = "noreferrer";
+  }
+  if (options.type) node.type = options.type;
+  if (options.dataset) {
+    Object.entries(options.dataset).forEach(([key, value]) => {
+      node.dataset[key] = value;
+    });
+  }
+  children.forEach((child) => {
+    if (child) node.appendChild(child);
+  });
+  return node;
+}
+
+function emptyNode(message, className = "empty") {
+  return el("div", { className, text: message });
 }
 
 function fromTradeDate(tradeDate) {
@@ -92,7 +213,7 @@ function fromTradeDate(tradeDate) {
 }
 
 function toTradeDate(dateValue) {
-  return dateValue.replaceAll("-", "");
+  return String(dateValue || "").replaceAll("-", "");
 }
 
 function numberValue(value) {
@@ -113,6 +234,12 @@ function formatPct(value) {
   const num = numberValue(value);
   if (num === null) return "--";
   return `${formatNumber(num, 2)}%`;
+}
+
+function formatSignedPct(value) {
+  const num = numberValue(value);
+  if (num === null) return "--";
+  return `${num > 0 ? "+" : ""}${formatNumber(num, 2)}%`;
 }
 
 function formatAmount(value) {
@@ -138,8 +265,7 @@ function formatTenThousandYuan(value) {
 function signedMoneyWan(value) {
   const amount = numberValue(value);
   if (amount === null) return "--";
-  const prefix = amount > 0 ? "+" : "";
-  return `${prefix}${formatTenThousandYuan(amount)}`;
+  return `${amount > 0 ? "+" : ""}${formatTenThousandYuan(amount)}`;
 }
 
 function saveJson(key, value) {
@@ -158,7 +284,7 @@ function showToast(message) {
   els.toast.textContent = message;
   els.toast.classList.add("show");
   window.clearTimeout(showToast.timer);
-  showToast.timer = window.setTimeout(() => els.toast.classList.remove("show"), 3000);
+  showToast.timer = window.setTimeout(() => els.toast.classList.remove("show"), 2600);
 }
 
 function quoteClass(value) {
@@ -168,14 +294,33 @@ function quoteClass(value) {
 }
 
 function dataSourceText(source) {
-  if (source === "browser") return "浏览器缓存";
-  if (source === "database") return "本地库";
-  if (source === "online") return "线上更新";
-  if (source === "memory") return "内存缓存";
-  if (source === "not_ready") return "未到收盘";
-  if (source === "tushare_empty") return "无交易数据";
-  if (source === "empty") return "暂无数据";
-  return "数据源";
+  const labels = {
+    browser: "浏览器缓存",
+    database: "本地库",
+    online: "线上更新",
+    memory: "内存缓存",
+    not_ready: "未到刷新时间",
+    tushare_empty: "无交易数据",
+    empty: "暂无数据",
+  };
+  return labels[source] || "数据源";
+}
+
+function displayTradeDate(tradeDate) {
+  if (!tradeDate || tradeDate.length !== 8) return "--";
+  return `${tradeDate.slice(0, 4)}-${tradeDate.slice(4, 6)}-${tradeDate.slice(6, 8)}`;
+}
+
+function clampNumber(value, min, max, fallback) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(num)));
+}
+
+function setBar(node, value) {
+  if (!node) return;
+  const pct = Math.max(0, Math.min(100, numberValue(value) ?? 0));
+  node.style.width = `${pct}%`;
 }
 
 function setLoading(isLoading, requestedTradeDate = "") {
@@ -183,100 +328,15 @@ function setLoading(isLoading, requestedTradeDate = "") {
   els.queryBtn.disabled = isLoading;
   els.exportBtn.disabled = isLoading || state.rows.length === 0;
   els.queryBtn.querySelector("span").textContent = isLoading ? "刷新中" : "刷新";
-  if (isLoading) {
-    state.loadError = "";
-    els.actionLabel.textContent = "加载行情";
-    els.actionTag.textContent = requestedTradeDate ? displayTradeDate(requestedTradeDate) : "请稍等";
-    els.dataDateLabel.textContent = requestedTradeDate ? `正在读取 ${displayTradeDate(requestedTradeDate)}` : "正在读取交易日";
-    els.actionReason.textContent = "正在读取日线行情和股票名称。推荐池会在行情确认后单独计算。";
-    els.candidateInfo.textContent = "加载中";
-    els.candidateList.innerHTML = '<div class="loading-card">正在加载行情...</div>';
-  }
-}
-
-function applyDailyPayload(payload, { fromCache = false } = {}) {
-  state.rows = decorateRows(payload.rows || []);
-  state.summary = payload.summary || {};
-  state.tradeDate = payload.trade_date || "";
-  state.dataSource = fromCache ? "browser" : payload.data_source || "";
-  state.databaseCached = Boolean(payload.database_cached);
+  if (!isLoading) return;
   state.loadError = "";
-  state.recommendationStatus = "idle";
-  state.recommendationError = "";
-  if (payload.trade_date) {
-    els.tradeDate.value = fromTradeDate(payload.trade_date);
-  }
-  resetVisibleCounts();
-  state.recommendations = decorateRows(payload.recommendations || []);
-  const selectedStillExists = state.rows.find((row) => row.ts_code === state.selected?.ts_code);
-  state.selected = state.recommendations[0] || selectedStillExists || state.rows[0] || null;
-  updateMarket();
-  renderCandidates();
-  renderSelected();
-  if (state.selected && !fromCache) loadSelectedStock(state.selected.ts_code);
-  if (payload.trade_date && !fromCache) loadRecommendations(payload.trade_date);
-  if (payload.trade_date && !fromCache) loadIndustryTrends(payload.trade_date);
-  if (fromCache) {
-    showToast("先显示上次数据，正在后台刷新");
-  }
-}
-
-async function loadRecommendations(tradeDate) {
-  state.recommendationStatus = "loading";
-  state.recommendationError = "";
-  renderCandidates();
-  try {
-    const response = await fetch(`/api/recommendations?trade_date=${tradeDate}&limit=20`);
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.detail || "推荐池计算失败");
-    if (payload.data_source) state.dataSource = payload.data_source;
-    state.recommendations = decorateRows(payload.rows || []);
-    if (Object.keys(state.basicMap).length) {
-      state.recommendations = state.recommendations.map((row) => ({
-        ...mergeBasic(row),
-        score: row.score,
-        signal: row.signal,
-      }));
-    }
-    state.recommendationStatus = "done";
-    if (!state.recommendations.length) {
-      renderCandidates();
-      return;
-    }
-    const selectedCode = state.selected?.ts_code;
-    state.selected = state.recommendations.find((row) => row.ts_code === selectedCode) || state.recommendations[0];
-    state.activeBucket = "priority";
-    renderCandidates();
-    renderSelected();
-    await loadSelectedStock(state.selected.ts_code);
-  } catch (error) {
-    state.recommendationStatus = "error";
-    state.recommendationError = error.message || "推荐池计算失败";
-    renderCandidates();
-  }
-}
-
-async function loadIndustryTrends(tradeDate) {
-  els.industryInfo.textContent = "加载中";
-  try {
-    const response = await fetch(`/api/industry-trends?trade_date=${tradeDate}&limit=16`);
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.detail || "行业趋势加载失败");
-    if (payload.data_source) state.dataSource = payload.data_source;
-    state.industryTrends = payload.rows || [];
-    renderIndustryTrends();
-  } catch (error) {
-    els.industryInfo.textContent = error.message || "行业趋势加载失败";
-  }
-}
-
-function loadCachedDaily() {
-  const cached = loadJson(STORAGE_KEYS.lastDaily, null);
-  if (!cached || !cached.rows || !cached.rows.length) return false;
-  const namedRows = cached.rows.filter((row) => row.name).length;
-  if (namedRows / cached.rows.length < 0.8) return false;
-  applyDailyPayload(cached, { fromCache: true });
-  return true;
+  setText("actionLabel", "正在读取行情");
+  setText("actionTag", requestedTradeDate ? displayTradeDate(requestedTradeDate) : "请稍等");
+  setText("dataDateLabel", requestedTradeDate ? `读取 ${displayTradeDate(requestedTradeDate)}` : "读取交易日");
+  setText("actionReason", "先加载日线行情，再生成候选池和行业方向。");
+  setText("candidateInfo", "加载中");
+  clearNode(els.candidateList);
+  els.candidateList.appendChild(emptyNode("正在加载行情...", "loading-card"));
 }
 
 function updateStatus(status) {
@@ -289,9 +349,7 @@ function updateStatus(status) {
   }
   if (!status.sdk_available || !status.token_configured) {
     els.statusBadge.classList.add("error");
-    els.statusBadge.querySelector("span:last-child").textContent = !status.sdk_available
-      ? "依赖未安装"
-      : "未配置行情";
+    els.statusBadge.querySelector("span:last-child").textContent = !status.sdk_available ? "依赖未安装" : "未配置行情";
     return;
   }
   els.statusBadge.classList.add("ready");
@@ -315,14 +373,14 @@ function signalFor(row) {
   if (row.recommend_type) return row.recommend_type;
   const pct = numberValue(row.pct_chg) ?? 0;
   const close = numberValue(row.close) ?? 0;
-  const open = numberValue(row.open) ?? 0;
-  const high = numberValue(row.high) ?? 0;
+  const open = numberValue(row.open) ?? close;
+  const high = numberValue(row.high) ?? close;
   const nearHigh = high > 0 && close / high > 0.985;
   if (pct >= 8 && nearHigh) return "过热观察";
   if (pct >= 3 && close >= open) return "次日回踩";
   if (pct <= -5) return "先回避";
   if (pct < 0 && close < open) return "偏弱";
-  return "次日低吸";
+  return "低吸观察";
 }
 
 function stockTitle(row) {
@@ -337,40 +395,7 @@ function candidateName(row) {
 function stockSubTitle(row) {
   if (!row) return "";
   const parts = [row.industry, row.area].filter(Boolean);
-  return parts.length ? parts.join(" · ") : "行业信息待补充";
-}
-
-function modalValue(column, value) {
-  if (value === null || value === undefined || value === "") return "";
-  if (column === "amount") return formatThousandYuan(value);
-  if (["total_mv", "circ_mv"].includes(column)) return formatTenThousandYuan(value);
-  if (column === "net_mf_amount" || column.includes("amount")) return formatTenThousandYuan(value);
-  if (["turnover_rate", "turnover_rate_f", "volume_ratio", "pe", "pb", "open", "high", "low", "close", "pre_close", "change", "pct_chg"].includes(column)) {
-    return typeof value === "number" ? formatNumber(value, 2) : value;
-  }
-  return value;
-}
-
-function setBar(el, value) {
-  const pct = Math.max(0, Math.min(100, numberValue(value) ?? 0));
-  el.style.width = `${pct}%`;
-}
-
-function formatSignedPct(value) {
-  const num = numberValue(value);
-  if (num === null) return "--";
-  return `${num > 0 ? "+" : ""}${formatNumber(num, 2)}%`;
-}
-
-function displayTradeDate(tradeDate) {
-  if (!tradeDate || tradeDate.length !== 8) return "--";
-  return `${tradeDate.slice(0, 4)}-${tradeDate.slice(4, 6)}-${tradeDate.slice(6, 8)}`;
-}
-
-function clampNumber(value, min, max, fallback) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return fallback;
-  return Math.max(min, Math.min(max, Math.round(num)));
+  return parts.length ? parts.join(" / ") : "行业信息待补充";
 }
 
 function nextDayText(row) {
@@ -382,13 +407,13 @@ function nextDayText(row) {
 }
 
 function conditionText(row) {
-  const checks = row?.screen_conditions;
   const metrics = row?.screen_metrics;
-  if (!checks || !metrics) return "";
-  const marketValue = metrics.market_value_yi === null || metrics.market_value_yi === undefined
-    ? "--"
-    : `${formatNumber(metrics.market_value_yi, 0)}亿`;
-  return `量比${formatNumber(metrics.volume_ratio, 2)} / 换手${formatNumber(metrics.turnover_rate, 2)}% / 市值${marketValue}`;
+  if (!metrics) return "";
+  const marketValue =
+    metrics.market_value_yi === null || metrics.market_value_yi === undefined
+      ? "--"
+      : `${formatNumber(metrics.market_value_yi, 0)}亿`;
+  return `量比 ${formatNumber(metrics.volume_ratio, 2)} / 换手 ${formatNumber(metrics.turnover_rate, 2)}% / 市值 ${marketValue}`;
 }
 
 function decorateRows(rows) {
@@ -412,11 +437,7 @@ function mergeBasic(row) {
 function applyBasicToRows() {
   if (!Object.keys(state.basicMap).length || !state.rows.length) return;
   const selectedCode = state.selected?.ts_code;
-  state.rows = state.rows.map((row) => ({
-    ...mergeBasic(row),
-    score: Number(scoreRow(row).toFixed(2)),
-    signal: signalFor(row),
-  }));
+  state.rows = decorateRows(state.rows);
   state.recommendations = state.recommendations.map((row) => ({
     ...mergeBasic(row),
     score: row.score,
@@ -438,15 +459,15 @@ function marketDecision(summary) {
       mode: "wait",
       label: "等待数据",
       tag: "--",
-      reason: "打开页面后会自动找最近有数据的交易日。",
+      reason: "打开页面后会自动寻找最近有行情的交易日。",
     };
   }
   if (ratio >= 58 && avg > 0) {
     return {
       mode: "attack",
-      label: "可以出手",
-      tag: "只做强势股",
-      reason: "上涨家数占优，平均涨跌幅为正。我的做法是只挑最强的，不在杂毛里消耗精力。",
+      label: "可以找强势机会",
+      tag: "只做计划内股票",
+      reason: "上涨家数占优，平均涨跌为正。新手先看候选池，不追临时冲动。",
     };
   }
   if (ratio >= 42) {
@@ -454,52 +475,55 @@ function marketDecision(summary) {
       mode: "wait",
       label: "轻仓观察",
       tag: "先看后动",
-      reason: "市场不是单边强势，适合先筛候选，等股票自己走出确认信号。",
+      reason: "市场不是单边强势，适合筛候选、等回踩或突破确认。",
     };
   }
   return {
     mode: "defend",
     label: "防守观望",
     tag: "少交易",
-    reason: "下跌家数明显更多。我的做法是降低仓位，只记录候选，不急着买。",
+    reason: "下跌家数明显更多，先降低操作频率，把观察名单整理好。",
   };
 }
 
 function updateMarket() {
   const summary = state.summary || {};
+  els.marketAnswer.classList.remove("attack", "wait", "defend");
   if (state.loadError && !summary.total) {
-    els.marketAnswer.classList.remove("attack", "wait", "defend");
     els.marketAnswer.classList.add("defend");
-    els.dataDateLabel.textContent = "行情接口异常";
-    els.actionLabel.textContent = "暂时没有数据";
-    els.actionTag.textContent = "稍后刷新";
-    els.actionReason.textContent = state.loadError;
-    els.upMetric.textContent = "--";
-    els.downMetric.textContent = "--";
-    els.avgMetric.textContent = "--";
-    els.amountMetric.textContent = "--";
-    els.breadthBar.style.width = "0%";
-    els.breadthText.textContent = "--";
+    setText("dataDateLabel", "行情接口异常");
+    setText("actionLabel", "暂时没有数据");
+    setText("actionTag", "稍后刷新");
+    setText("actionReason", state.loadError);
+    setText("upMetric", "--");
+    setText("downMetric", "--");
+    setText("avgMetric", "--");
+    setText("amountMetric", "--");
+    setText("breadthText", "市场宽度 --");
+    setBar(els.breadthBar, 0);
     return;
   }
+
   const decision = marketDecision(summary);
-  els.marketAnswer.classList.remove("attack", "wait", "defend");
   els.marketAnswer.classList.add(decision.mode);
-  const sourceText = state.dataSource ? ` · ${dataSourceText(state.dataSource)}` : "";
-  els.dataDateLabel.textContent = state.tradeDate
-    ? `数据日 ${displayTradeDate(state.tradeDate)} · ${summary.total || 0} 条 · ${summary.temperature || "--"}${sourceText}`
-    : "等待交易日";
-  els.actionLabel.textContent = decision.label;
-  els.actionTag.textContent = decision.tag;
-  els.actionReason.textContent = decision.reason;
-  els.upMetric.textContent = summary.up ?? "--";
-  els.downMetric.textContent = summary.down ?? "--";
-  els.avgMetric.textContent =
-    summary.avg_pct_chg === null || summary.avg_pct_chg === undefined ? "--" : formatPct(summary.avg_pct_chg);
-  els.amountMetric.textContent = formatThousandYuan(summary.amount_total);
+  const sourceText = state.dataSource ? ` / ${dataSourceText(state.dataSource)}` : "";
+  setText(
+    "dataDateLabel",
+    state.tradeDate
+      ? `${displayTradeDate(state.tradeDate)} / ${summary.total || 0} 条 / ${summary.temperature || "--"}${sourceText}`
+      : "等待交易日",
+  );
+  setText("actionLabel", decision.label);
+  setText("actionTag", decision.tag);
+  setText("actionReason", decision.reason);
+  setText("headerSubtitle", state.tradeDate ? `当前交易日 ${displayTradeDate(state.tradeDate)}` : "等待行情数据");
+  setText("upMetric", summary.up ?? "--");
+  setText("downMetric", summary.down ?? "--");
+  setText("avgMetric", summary.avg_pct_chg === null || summary.avg_pct_chg === undefined ? "--" : formatPct(summary.avg_pct_chg));
+  setText("amountMetric", formatThousandYuan(summary.amount_total));
   const ratio = Math.max(0, Math.min(100, numberValue(summary.up_ratio) ?? 0));
-  els.breadthBar.style.width = `${ratio}%`;
-  els.breadthText.textContent = summary.total ? `${formatNumber(ratio, 1)}% 上涨` : "--";
+  setText("breadthText", summary.total ? `市场宽度 ${formatNumber(ratio, 1)}% 上涨` : "市场宽度 --");
+  setBar(els.breadthBar, ratio);
 }
 
 function resetVisibleCounts() {
@@ -520,7 +544,7 @@ function rowBucket(bucket) {
         })
         .map((row) => ({
           ...row,
-          recommend_reason: "严格推荐为空，显示活跃备选",
+          recommend_reason: "严格推荐为空，显示活跃备选。",
           recommend_type: "备选观察",
         }))
         .sort((a, b) => (numberValue(b.amount) ?? 0) - (numberValue(a.amount) ?? 0));
@@ -548,94 +572,74 @@ function rowBucket(bucket) {
 function renderCandidates() {
   const allRows = rowBucket(state.activeBucket);
   const rows = allRows.slice(0, state.candidateVisible);
-  if (!state.rows.length) {
-    els.candidateInfo.textContent = "等待行情";
-  } else if (state.activeBucket === "priority" && state.recommendationStatus === "loading") {
-    els.candidateInfo.textContent = `计算中 · ${state.rows.length} 条行情`;
-  } else if (state.activeBucket === "priority" && state.recommendationStatus === "error") {
-    els.candidateInfo.textContent = "推荐失败";
-  } else if (state.activeBucket === "priority" && !state.recommendations.length && state.recommendationStatus === "done") {
-    els.candidateInfo.textContent = `${rows.length}/${allRows.length} 只 · 活跃备选`;
-  } else {
-    els.candidateInfo.textContent = `${rows.length}/${allRows.length} 只 · ${displayTradeDate(state.tradeDate)}`;
-  }
-  els.candidateList.innerHTML = "";
-  document.querySelectorAll("[data-bucket]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.bucket === state.activeBucket);
-  });
+  if (!state.rows.length) setText("candidateInfo", "等待行情");
+  else if (state.recommendationStatus === "loading") setText("candidateInfo", `计算中 / ${state.rows.length} 条`);
+  else if (state.recommendationStatus === "error") setText("candidateInfo", "推荐失败");
+  else setText("candidateInfo", `${rows.length}/${allRows.length} 只`);
+
+  clearNode(els.candidateList);
   if (!rows.length) {
-    if (state.activeBucket === "priority" && state.recommendationStatus === "loading") {
-      els.candidateList.innerHTML = '<div class="empty">严格推荐池正在计算：量比、换手、市值、均线和次日验证都要过一遍，会比行情慢。</div>';
-    } else if (state.activeBucket === "priority" && state.recommendationStatus === "error") {
-      els.candidateList.innerHTML = `<div class="empty">推荐池计算失败：${state.recommendationError || "请稍后刷新"}。可以先切到“活跃”看全市场。</div>`;
-    } else if (state.activeBucket === "priority" && state.recommendationStatus === "done") {
-      els.candidateList.innerHTML = '<div class="empty">当前交易日没有股票同时满足严格推荐条件，活跃备选也为空。建议少交易。</div>';
-    } else {
-      els.candidateList.innerHTML =
-        state.activeBucket === "priority"
-          ? '<div class="empty">行情已到，推荐池尚未开始计算。</div>'
-          : '<div class="empty">这个分组暂时没有股票</div>';
-    }
+    const messages = {
+      loading: "候选池正在计算，会先读取行情、指标和次日验证。",
+      error: `推荐池失败：${state.recommendationError || "请稍后刷新"}。可以切到“活跃”看全市场。`,
+      done: "当前交易日没有股票满足这个分类。",
+      idle: "等待行情数据。",
+    };
+    els.candidateList.appendChild(emptyNode(messages[state.recommendationStatus] || messages.idle));
     return;
   }
+
   const fragment = document.createDocumentFragment();
   rows.forEach((row) => {
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = `candidate-card ${state.selected?.ts_code === row.ts_code ? "active" : ""}`;
-    card.innerHTML = `
-      <div class="candidate-top">
-        <span>
-          <strong>${candidateName(row)}</strong>
-          ${row.name ? `<em>${row.ts_code}</em>` : ""}
-        </span>
-        <strong class="${quoteClass(row.pct_chg)}">${formatPct(row.pct_chg)}</strong>
-      </div>
-      <p class="candidate-reason">${row.recommend_reason || row.signal || stockSubTitle(row)}</p>
-      <div class="candidate-tags">
-        <span>${row.recommend_type || row.signal}</span>
-        <span>额 ${formatThousandYuan(row.amount)}</span>
-        ${row.screen_conditions ? `<span>${conditionText(row)}</span>` : `<span>${stockSubTitle(row)}</span>`}
-      </div>
-      ${row.next_day ? `<p class="next-day">${nextDayText(row)}</p>` : ""}
-    `;
-    card.addEventListener("click", () => selectStock(row));
-    fragment.appendChild(card);
+    const nextText = nextDayText(row);
+    const rowButton = el("button", {
+      className: `candidate-row${row.ts_code === state.selected?.ts_code ? " selected" : ""}`,
+      type: "button",
+      title: [row.recommend_reason || row.signal || "", conditionText(row), nextText].filter(Boolean).join(" / "),
+    });
+    const stock = el("span", { className: "candidate-stock" }, [
+      el("strong", { text: candidateName(row) }),
+      el("small", { text: row.ts_code || "--" }),
+    ]);
+    rowButton.append(
+      stock,
+      el("span", { className: "muted-cell", text: row.industry || row.area || "--" }),
+      el("span", { className: quoteClass(row.pct_chg), text: formatPct(row.pct_chg) }),
+      el("span", { text: formatThousandYuan(row.amount) }),
+      el("span", { text: formatNumber(row.score, 1) }),
+      el("span", { className: "signal-cell", text: row.recommend_reason || row.signal || stockSubTitle(row) }),
+    );
+    rowButton.addEventListener("click", () => selectStock(row));
+    fragment.appendChild(rowButton);
   });
-  if (rows.length < allRows.length) {
-    const more = document.createElement("div");
-    more.className = "load-hint";
-    more.textContent = "继续向下滚动加载更多";
-    fragment.appendChild(more);
-  }
   els.candidateList.appendChild(fragment);
+
+  if (state.candidateVisible < allRows.length) {
+    els.candidateList.appendChild(emptyNode("继续向下滚动加载更多", "loading-card"));
+  }
 }
 
 function renderIndustryTrends() {
   const rows = state.industryTrends || [];
-  els.industryInfo.textContent = rows.length ? `${rows.length} 个行业` : "暂无行业";
-  els.industryList.innerHTML = "";
+  setText("industryInfo", rows.length ? `${rows.length} 个行业` : "暂无行业");
+  clearNode(els.industryList);
   if (!rows.length) {
-    els.industryList.innerHTML = '<div class="empty">暂无行业趋势</div>';
+    els.industryList.appendChild(emptyNode("暂无行业趋势"));
     return;
   }
   const fragment = document.createDocumentFragment();
-  rows.slice(0, 8).forEach((row) => {
-    const item = document.createElement("button");
-    item.type = "button";
-    item.className = "industry-item";
-    const top = row.top_stock?.name || row.top_stock?.ts_code || "--";
-    item.innerHTML = `
-      <div>
-        <strong>${row.industry}</strong>
-        <span>${row.up}/${row.count} 上涨 · 强势 ${row.strong}</span>
-      </div>
-      <em class="${quoteClass(row.avg_pct_chg)}">${formatSignedPct(row.avg_pct_chg)}</em>
-      <b><i style="width:${Math.max(0, Math.min(100, row.up_ratio || 0))}%"></i></b>
-      <p>${top} ${formatSignedPct(row.top_stock?.pct_chg)}</p>
-    `;
+  rows.forEach((row) => {
+    const item = el("button", { className: "industry-row", type: "button" });
+    item.append(
+      el("div", { className: "industry-main" }, [
+        el("strong", { text: row.industry || "未分类" }),
+        el("em", { className: quoteClass(row.avg_pct_chg), text: formatPct(row.avg_pct_chg) }),
+      ]),
+      el("p", { text: `上涨 ${row.up_count || 0}/${row.count || 0} / 龙头 ${row.top_stock?.name || row.top_stock?.ts_code || "--"}` }),
+    );
     item.addEventListener("click", () => {
-      const match = state.recommendations.find((stock) => stock.industry === row.industry) ||
+      const match =
+        state.recommendations.find((stock) => stock.industry === row.industry) ||
         state.rows.find((stock) => stock.industry === row.industry);
       if (match) selectStock(match);
     });
@@ -649,201 +653,160 @@ function evaluateStock(row) {
     return {
       badge: "--",
       title: "先选择一只股票",
-      reason: "我会把买入、观察、回避拆成明确条件，避免只凭涨跌幅冲动操作。",
+      reason: "从左侧候选池点一只股票，右侧会显示计划、资金和消息来源。",
+      warning: "新手先看结论，再看理由，不要同时追太多股票。",
       entry: "--",
       stop: "--",
       target: "--",
       position: "--",
-      warning: "规则写不出来，就不交易。",
     };
   }
   const pct = numberValue(row.pct_chg) ?? 0;
   const close = numberValue(row.close) ?? 0;
-  const open = numberValue(row.open) ?? close;
-  const high = numberValue(row.high) ?? close;
   const low = numberValue(row.low) ?? close;
+  const high = numberValue(row.high) ?? close;
   const market = marketDecision(state.summary);
-
-  if (pct <= -5 || (market.mode === "defend" && pct < 3)) {
+  const hot = pct >= 7;
+  const weak = pct <= -4;
+  const entryLow = close ? close * (hot ? 0.975 : 0.985) : null;
+  const stop = low ? low * 0.985 : null;
+  const target = high ? high * 1.018 : null;
+  if (market.mode === "defend" || weak) {
     return {
-      badge: "回避",
-      title: "今天不急着买",
-      reason: "要么个股偏弱，要么市场环境不支持进攻。我的处理是先放观察池，等重新站强。",
-      entry: `重新站上 ${formatNumber(Math.max(open, close), 2)}`,
-      stop: `跌破 ${formatNumber(low, 2)}`,
-      target: "先不设目标",
-      position: "0 到 1 成",
-      warning: "弱市里最贵的是冲动，不是错过。",
+      badge: "先观察",
+      title: "不急着买",
+      reason: weak ? "个股当日偏弱，先看能否止跌。" : "市场整体偏弱，优先保留现金和观察名单。",
+      warning: "没有确认信号就不要为了交易而交易。",
+      entry: close ? `${formatNumber(entryLow, 2)} 附近再看` : "--",
+      stop: stop ? formatNumber(stop, 2) : "--",
+      target: target ? formatNumber(target, 2) : "--",
+      position: "0-1成",
     };
   }
-
-  if (pct >= 8 && high > 0 && close / high > 0.985) {
+  if (hot) {
     return {
-      badge: "观察",
-      title: "很强，但不追高",
-      reason: "这类票说明资金关注度高，但日内涨幅已经大。我的做法是等回踩或次日确认。",
-      entry: `${formatNumber(close * 0.97, 2)} 到 ${formatNumber(close, 2)}`,
-      stop: `${formatNumber(Math.max(low, close * 0.94), 2)}`,
-      target: `${formatNumber(close * 1.06, 2)} 上方`,
-      position: "最多 1 到 2 成",
-      warning: "如果开盘直接高开很多，我不会追。",
+      badge: "等回踩",
+      title: "强势但别追高",
+      reason: "涨幅较大，适合等分时回踩或次日承接确认。",
+      warning: "追高最容易把计划变成情绪交易。",
+      entry: entryLow ? `${formatNumber(entryLow, 2)} 附近` : "--",
+      stop: stop ? formatNumber(stop, 2) : "--",
+      target: target ? formatNumber(target, 2) : "--",
+      position: "1-2成",
     };
   }
-
-  if (pct >= 3 && close >= open) {
-    return {
-      badge: "候选",
-      title: "可以列入明日重点",
-      reason: "涨幅、收盘位置和成交额都还不错。我的处理是等回踩不破或放量继续走强。",
-      entry: `${formatNumber(close * 0.98, 2)} 到 ${formatNumber(close * 1.01, 2)}`,
-      stop: `${formatNumber(Math.max(low, close * 0.95), 2)}`,
-      target: `${formatNumber(close * 1.05, 2)} 到 ${formatNumber(close * 1.08, 2)}`,
-      position: market.mode === "attack" ? "2 到 3 成" : "1 到 2 成",
-      warning: "买点必须靠近计划价，离太远就放弃。",
-    };
-  }
-
   return {
-    badge: "观察",
-    title: "先看，不急",
-    reason: "这只股票暂时没有足够强的信号。我的处理是只记录，不主动出手。",
-    entry: `${formatNumber(close * 0.98, 2)} 附近企稳`,
-    stop: `${formatNumber(low, 2)} 下方`,
-    target: `${formatNumber(high, 2)} 附近`,
-    position: "0 到 1 成",
-    warning: "没有明显优势时，现金也是仓位。",
+    badge: "观察买入",
+    title: "可以列入计划",
+    reason: "涨跌幅没有过热，适合结合资金和行业强度继续确认。",
+    warning: "只在买点出现时执行，跌破放弃线就撤。",
+    entry: entryLow ? `${formatNumber(entryLow, 2)}-${formatNumber(close, 2)}` : "--",
+    stop: stop ? formatNumber(stop, 2) : "--",
+    target: target ? formatNumber(target, 2) : "--",
+    position: "1成起",
   };
 }
 
 function renderSelected() {
   const row = state.selected;
   const idea = evaluateStock(row);
-  els.selectedCode.textContent = stockTitle(row);
-  els.selectedClose.textContent = row ? formatNumber(row.close, 2) : "--";
-  els.selectedPct.textContent = row ? formatPct(row.pct_chg) : "--";
+  setText("selectedCode", stockTitle(row));
+  setText("selectedClose", row ? formatNumber(row.close, 2) : "--");
+  setText("selectedPct", row ? formatPct(row.pct_chg) : "--");
   els.selectedPct.className = row ? quoteClass(row.pct_chg) : "";
-  els.selectedAmount.textContent = row ? formatThousandYuan(row.amount) : "--";
-  els.decisionBadge.textContent = idea.badge;
-  els.planTitle.textContent = idea.title;
-  els.planReason.textContent = idea.reason;
-  els.planWarning.textContent = idea.warning;
-  els.planEntry.textContent = idea.entry;
-  els.planStop.textContent = idea.stop;
-  els.planTarget.textContent = idea.target;
-  els.planPosition.textContent = idea.position;
-  if (!row) renderAnalysis(null);
+  setText("selectedAmount", row ? formatThousandYuan(row.amount) : "--");
+  setText("decisionBadge", idea.badge);
+  setText("planTitle", idea.title);
+  setText("planReason", idea.reason);
+  setText("planWarning", idea.warning);
+  setText("planEntry", idea.entry);
+  setText("planStop", idea.stop);
+  setText("planTarget", idea.target);
+  setText("planPosition", idea.position);
 }
 
 function renderForecast(forecast) {
   if (!forecast) return;
-  els.planTitle.textContent = forecast.title || "明日观察";
-  els.planReason.textContent = forecast.summary || "等待更多数据确认。";
-  els.planWarning.textContent = forecast.avoid_signal || "不符合计划就放弃。";
-  els.planEntry.textContent = forecast.entry_zone || "--";
-  els.planStop.textContent = forecast.stop_price || "--";
-  els.planTarget.textContent = forecast.target_zone || "--";
-  els.planPosition.textContent = forecast.position || "--";
-  els.forecastMetric.textContent = forecast.direction
-    ? `${forecast.direction} ${forecast.confidence ?? "--"}`
-    : `${forecast.title || "--"} ${forecast.confidence ?? "--"}`;
+  setText("planTitle", forecast.title || "明日观察");
+  setText("planReason", forecast.summary || "等待更多数据确认。");
+  setText("planWarning", forecast.avoid_signal || "不符合计划就放弃。");
+  setText("planEntry", forecast.entry_zone || "--");
+  setText("planStop", forecast.stop_price || "--");
+  setText("planTarget", forecast.target_zone || "--");
+  setText("planPosition", forecast.position || "--");
+  setText("forecastMetric", forecast.direction ? `${forecast.direction} ${forecast.confidence ?? ""}` : "--");
+  setBar(els.confidenceBar, forecast.confidence ?? 0);
 }
 
 function renderMoneyFlow(money) {
   if (!money) {
-    if (els.moneyMetric) els.moneyMetric.textContent = "--";
-    els.moneyFlowTitle.textContent = "等待资金数据";
-    els.moneyFlowStrength.textContent = "--";
-    els.moneyFlowSummary.textContent = "选择股票后显示大单和超大单推算出的主力方向。";
-    els.mainMoneyNet.textContent = "--";
-    els.extraLargeMoney.textContent = "--";
-    els.largeMoney.textContent = "--";
-    els.totalMoneyNet.textContent = "--";
+    setText("moneyFlowTitle", "等待资金数据");
+    setText("moneyFlowStrength", "--");
+    setText("moneyFlowSummary", "选择股票后显示主力资金方向。");
+    ["mainMoneyNet", "extraLargeMoney", "largeMoney", "totalMoneyNet"].forEach((id) => setText(id, "--"));
     setBar(els.moneyStrengthBar, 0);
     return;
   }
-  if (els.moneyMetric) {
-    els.moneyMetric.textContent = money.main_net === null || money.main_net === undefined
-      ? money.level
-      : `${money.level} ${signedMoneyWan(money.main_net)}`;
-  }
-  els.moneyFlowTitle.textContent = money.level || "资金不明";
-  els.moneyFlowStrength.textContent = money.direction || "--";
-  els.moneyFlowSummary.textContent = money.readable || money.detail || "资金数据方向不明显。";
-  els.mainMoneyNet.textContent = signedMoneyWan(money.main_net);
-  els.mainMoneyNet.className = quoteClass(money.main_net);
-  els.extraLargeMoney.textContent = signedMoneyWan(money.extra_large_net);
-  els.extraLargeMoney.className = quoteClass(money.extra_large_net);
-  els.largeMoney.textContent = signedMoneyWan(money.large_net);
-  els.largeMoney.className = quoteClass(money.large_net);
-  els.totalMoneyNet.textContent = signedMoneyWan(money.net);
-  els.totalMoneyNet.className = quoteClass(money.net);
-  setBar(els.moneyStrengthBar, money.strength || 0);
+  setText("moneyFlowTitle", money.level || "资金不明");
+  setText("moneyFlowStrength", money.direction || "--");
+  setText("moneyFlowSummary", money.readable || money.detail || "资金方向不明显。");
+  setText("mainMoneyNet", signedMoneyWan(money.main_net));
+  setText("extraLargeMoney", signedMoneyWan(money.extra_large_net));
+  setText("largeMoney", signedMoneyWan(money.large_net));
+  setText("totalMoneyNet", signedMoneyWan(money.net));
+  setBar(els.moneyStrengthBar, money.strength_score ?? 0);
 }
 
 function renderAnalysis(payload) {
-  state.analysis = payload;
   if (!payload) {
-    els.recommendTitle.textContent = "等待推荐";
-    els.recommendReason.textContent = "先核验消息来源，再结合行情和资金判断。";
-    els.forecastMetric.textContent = "--";
-    els.trendMetric.textContent = "--";
-    if (els.moneyMetric) els.moneyMetric.textContent = "--";
-    els.supportMetric.textContent = "--";
-    els.resistanceMetric.textContent = "--";
-    els.riskWarning.textContent = "等待消息核验。";
+    setText("recommendTitle", "等待推荐");
+    setText("recommendReason", "先核验消息来源，再结合行情、趋势和资金判断。");
+    setText("riskWarning", "等待消息核验。");
+    setText("forecastMetric", "--");
+    setText("trendMetric", "--");
+    setText("supportMetric", "--");
+    setText("resistanceMetric", "--");
     setBar(els.trendBar, 0);
     setBar(els.confidenceBar, 0);
-    els.trend5Metric.textContent = "--";
-    els.trend20Metric.textContent = "--";
-    els.volumeMetric.textContent = "--";
-    els.turnoverMetric.textContent = "--";
-    els.peMetric.textContent = "--";
-    els.pbMetric.textContent = "--";
-    els.analysisNotes.textContent = "选择股票后显示关键分析点。";
-    els.sourceInfo.textContent = "暂无来源";
-    els.sourceList.innerHTML = "";
     renderMoneyFlow(null);
+    ["trend5Metric", "trend20Metric", "volumeMetric", "turnoverMetric", "peMetric", "pbMetric"].forEach((id) => setText(id, "--"));
+    setText("analysisNotes", "选择股票后显示风险点。");
+    clearNode(els.sourceList);
+    setText("sourceInfo", "暂无来源");
     return;
   }
   const { trend, money, valuation, support_resistance: sr, risk, forecast } = payload;
-  if (!state.recommendation) {
-    els.recommendTitle.textContent = `${risk.level} · ${risk.action}`;
-    els.recommendReason.textContent = forecast?.summary || `${trend.level}，${money.level}，${valuation.level}`;
-  }
+  setText("recommendTitle", `${risk.level} / ${risk.action}`);
+  setText("recommendReason", forecast?.summary || `${trend.level}，${money.level}，${valuation.level}`);
+  setText("trendMetric", `${trend.level} ${trend.score}`);
+  setText("supportMetric", sr.support ? `${formatNumber(sr.support, 2)} / ${formatSignedPct(-sr.support_gap_pct)}` : "--");
+  setText("resistanceMetric", sr.resistance ? `${formatNumber(sr.resistance, 2)} / ${formatSignedPct(sr.resistance_gap_pct)}` : "--");
+  setText("riskWarning", `风险 ${risk.score}：${risk.action}`);
+  setBar(els.trendBar, trend.score ?? 0);
   renderForecast(forecast);
   renderMoneyFlow(money);
-  els.trendMetric.textContent = `${trend.level} ${trend.score}`;
-  els.supportMetric.textContent = sr.support ? `${formatNumber(sr.support, 2)} / ${formatSignedPct(-sr.support_gap_pct)}` : "--";
-  els.resistanceMetric.textContent = sr.resistance ? `${formatNumber(sr.resistance, 2)} / ${formatSignedPct(sr.resistance_gap_pct)}` : "--";
-  els.riskWarning.textContent = `风险 ${risk.score}：${risk.action}`;
-  setBar(els.trendBar, trend.score);
-  if (!state.recommendation) setBar(els.confidenceBar, Math.max(0, 100 - risk.score));
-  els.trend5Metric.textContent = formatSignedPct(trend.pct5);
-  els.trend20Metric.textContent = formatSignedPct(trend.pct20);
-  els.volumeMetric.textContent = trend.volume_ratio ? `${formatNumber(trend.volume_ratio, 2)} 倍` : "--";
-  els.turnoverMetric.textContent = valuation.turnover ? `${formatNumber(valuation.turnover, 2)}%` : "--";
-  els.peMetric.textContent = valuation.pe ? formatNumber(valuation.pe, 2) : "--";
-  els.pbMetric.textContent = valuation.pb ? formatNumber(valuation.pb, 2) : "--";
+  setText("trend5Metric", formatSignedPct(trend.pct5));
+  setText("trend20Metric", formatSignedPct(trend.pct20));
+  setText("volumeMetric", trend.volume_ratio ? `${formatNumber(trend.volume_ratio, 2)} 倍` : "--");
+  setText("turnoverMetric", valuation.turnover ? `${formatNumber(valuation.turnover, 2)}%` : "--");
+  setText("peMetric", valuation.pe ? formatNumber(valuation.pe, 2) : "--");
+  setText("pbMetric", valuation.pb ? formatNumber(valuation.pb, 2) : "--");
   const notes = [...(trend.reasons || []), ...(valuation.notes || [])];
-  if (!state.recommendation) {
-    els.analysisNotes.textContent = notes.length ? notes.join("；") : "暂无明显异常，继续结合盘面确认。";
-  }
+  setText("analysisNotes", notes.length ? notes.join("；") : "暂无明显异常，继续结合盘面确认。");
 }
 
 async function loadAnalysis(tsCode) {
   const tradeDate = toTradeDate(els.tradeDate.value);
-  state.recommendation = null;
-  renderAnalysis(null);
-  els.recommendTitle.textContent = "分析中";
-  els.recommendReason.textContent = "正在计算趋势、资金、估值和风险。";
+  setText("recommendTitle", "分析中");
+  setText("recommendReason", "正在计算趋势、资金、估值和风险。");
   try {
     const response = await fetch(`/api/stock/${encodeURIComponent(tsCode)}/analysis?end_date=${tradeDate}`);
     const payload = await response.json();
-    if (!response.ok) throw new Error(payload.detail || "分析失败");
-    if (state.selected?.ts_code === tsCode) renderAnalysis(payload);
+    if (!response.ok) throw new Error(payload.detail || "分析数据加载失败");
+    renderAnalysis(payload);
   } catch (error) {
-    els.recommendTitle.textContent = "分析失败";
-    els.recommendReason.textContent = error.message || "分析数据加载失败";
+    setText("recommendTitle", "分析失败");
+    setText("recommendReason", error.message || "分析数据加载失败");
   }
 }
 
@@ -853,147 +816,136 @@ function renderSources(sources) {
   const news = sources?.news || [];
   const errors = sources?.errors || [];
   const items = [
-    ...cninfo.map((item) => ({ type: item.source_level || "一级来源", title: item.title, meta: `${item.source || "巨潮资讯"} ${item.date || ""}`, url: item.url })),
-    ...announcements.map((item) => ({ type: "公告", title: item.title, meta: item.ann_date, url: item.url })),
-    ...news.map((item) => ({ type: "新闻", title: item.title, meta: item.pub_time || item.src, url: item.url })),
-    ...errors.map((item) => ({ type: "提示", title: item, meta: "", url: "" })),
-  ];
-  els.sourceInfo.textContent = items.length ? `${items.length} 条来源` : "未取到来源";
-  els.sourceList.innerHTML = "";
+    ...announcements.map((item) => ({ ...item, type: "公告" })),
+    ...cninfo.map((item) => ({ ...item, type: "巨潮" })),
+    ...news.map((item) => ({ ...item, type: "新闻" })),
+    ...errors.map((item) => ({ title: item, type: "提示" })),
+  ].slice(0, 8);
+  setText("sourceInfo", items.length ? `${items.length} 条来源` : "未取到来源");
+  clearNode(els.sourceList);
   if (!items.length) {
-    els.sourceList.innerHTML = '<div class="empty">没有取到公告或新闻来源</div>';
+    els.sourceList.appendChild(emptyNode("没有取到公告或新闻来源"));
     return;
   }
   const fragment = document.createDocumentFragment();
-  items.slice(0, 12).forEach((item) => {
-    const row = document.createElement(item.url ? "a" : "div");
-    row.className = "source-item";
-    if (item.url) {
-      row.href = item.url;
-      row.target = "_blank";
-      row.rel = "noreferrer";
-    }
-    row.innerHTML = `<span>${item.type}</span><strong>${item.title || "--"}</strong><em>${item.meta || ""}</em>`;
+  items.forEach((item) => {
+    const row = el(item.url ? "a" : "div", { className: "source-item", href: item.url });
+    row.append(
+      el("div", { className: "source-main" }, [
+        el("strong", { className: "source-title", text: item.title || "--" }),
+        el("span", { text: item.type }),
+      ]),
+      el("p", { text: item.meta || item.date || item.source || "" }),
+    );
     fragment.appendChild(row);
   });
   els.sourceList.appendChild(fragment);
 }
 
 function renderRecommendation(payload) {
-  state.recommendation = payload;
-  if (payload?.analysis) renderAnalysis(payload.analysis);
+  renderSources(payload?.sources);
   const rec = payload?.recommendation;
   if (!rec) return;
-  els.recommendTitle.textContent = `${rec.action || "等待"} · ${rec.confidence ?? "--"}分`;
-  els.recommendReason.textContent = rec.verification || "消息来源不足，谨慎参考。";
-  setBar(els.confidenceBar, rec.confidence || 0);
+  setText("recommendTitle", `${rec.action || "等待"} / ${rec.confidence ?? "--"}分`);
+  setText("recommendReason", rec.verification || "消息来源不足，谨慎参考。");
+  setBar(els.confidenceBar, rec.confidence ?? 0);
   const reasons = rec.reasons || [];
   const risks = rec.risks || [];
   const conditions = rec.conditions || [];
-  els.analysisNotes.textContent = [...reasons, ...risks, ...conditions].slice(0, 6).join("；") || "没有生成有效理由。";
-  renderSources(payload.sources);
+  setText("analysisNotes", [...reasons, ...risks, ...conditions].slice(0, 6).join("；") || "没有生成有效理由。");
 }
 
 async function loadRecommendation(tsCode) {
   const tradeDate = toTradeDate(els.tradeDate.value);
-  els.recommendTitle.textContent = "核验消息中";
-  els.recommendReason.textContent = "正在拉取公告、新闻，并调用模型做真实性检查。";
+  setText("recommendTitle", "核验消息中");
+  setText("recommendReason", "正在拉取公告、新闻，并调用模型做真实性检查。");
   try {
     const response = await fetch(`/api/stock/${encodeURIComponent(tsCode)}/recommendation?end_date=${tradeDate}`);
     const payload = await response.json();
-    if (!response.ok) throw new Error(payload.detail || "推荐失败");
-    if (state.selected?.ts_code === tsCode) renderRecommendation(payload);
+    if (!response.ok) throw new Error(payload.detail || "推荐加载失败");
+    renderRecommendation(payload);
   } catch (error) {
-    els.recommendTitle.textContent = "推荐失败";
-    els.recommendReason.textContent = error.message || "模型或消息源暂不可用";
+    setText("recommendTitle", "推荐失败");
+    setText("recommendReason", error.message || "模型或消息源暂不可用");
   }
 }
 
 async function loadSelectedStock(tsCode) {
-  await loadHistory(tsCode);
-  await Promise.allSettled([loadAnalysis(tsCode), loadRecommendation(tsCode)]);
+  await Promise.all([loadHistory(tsCode), loadAnalysis(tsCode), loadRecommendation(tsCode)]);
 }
 
 function movingAverage(rows, index, span) {
   if (index + 1 < span) return null;
   const slice = rows.slice(index + 1 - span, index + 1);
-  return slice.reduce((sum, row) => sum + (numberValue(row.close) ?? 0), 0) / span;
+  const values = slice.map((row) => numberValue(row.close)).filter((value) => value !== null);
+  return values.length === span ? values.reduce((sum, value) => sum + value, 0) / span : null;
 }
 
 function renderKline() {
   const canvas = els.klineChart;
+  if (!canvas) return;
   const ctx = canvas.getContext("2d");
   const box = canvas.getBoundingClientRect();
   const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2.5));
   const cssWidth = Math.max(320, Math.floor(box.width || canvas.clientWidth || 760));
-  const cssHeight = Math.max(180, Math.floor(box.height || canvas.clientHeight || 260));
-  const pixelWidth = Math.floor(cssWidth * dpr);
-  const pixelHeight = Math.floor(cssHeight * dpr);
-  if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
-    canvas.width = pixelWidth;
-    canvas.height = pixelHeight;
-  }
+  const cssHeight = Math.max(220, Math.floor(box.height || canvas.clientHeight || 300));
+  canvas.width = Math.floor(cssWidth * dpr);
+  canvas.height = Math.floor(cssHeight * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const width = cssWidth;
-  const height = cssHeight;
-  ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = "#fbfcfc";
-  ctx.fillRect(0, 0, width, height);
-  if (!state.history.length) {
-    ctx.fillStyle = "#67736f";
-    ctx.font = "15px Segoe UI, Arial";
+  ctx.clearRect(0, 0, cssWidth, cssHeight);
+  ctx.fillStyle = "#fbfcfb";
+  ctx.fillRect(0, 0, cssWidth, cssHeight);
+
+  const rows = state.history;
+  if (!rows.length) {
+    ctx.fillStyle = "#65736d";
+    ctx.font = "14px Segoe UI, Arial";
     ctx.textAlign = "center";
-    ctx.fillText("选择股票后加载走势", width / 2, height / 2);
+    ctx.fillText("选择股票后显示走势", cssWidth / 2, cssHeight / 2);
     return;
   }
 
-  const rows = state.history;
   const prices = rows.flatMap((row) => [numberValue(row.high), numberValue(row.low)]).filter((value) => value !== null);
   const vols = rows.map((row) => numberValue(row.vol) ?? 0);
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
   const maxVol = Math.max(...vols, 1);
-  const pad = { top: 22, right: 34, bottom: 34, left: 46 };
-  const priceHeight = height * 0.65;
+  const pad = { top: 22, right: 34, bottom: 34, left: 48 };
+  const priceHeight = cssHeight * 0.65;
   const volTop = pad.top + priceHeight + 22;
-  const volHeight = height - volTop - pad.bottom;
-  const step = (width - pad.left - pad.right) / rows.length;
+  const volHeight = cssHeight - volTop - pad.bottom;
+  const step = (cssWidth - pad.left - pad.right) / rows.length;
   const candleWidth = Math.max(4, Math.min(11, step * 0.58));
   const yPrice = (value) => pad.top + ((maxPrice - value) / Math.max(maxPrice - minPrice, 0.01)) * priceHeight;
   const yVol = (value) => volTop + volHeight - (value / maxVol) * volHeight;
 
-  function crisp(value) {
-    return Math.round(value) + 0.5;
-  }
-
-  ctx.strokeStyle = "#d8e3df";
+  ctx.strokeStyle = "#dbe4df";
   ctx.lineWidth = 1;
   for (let i = 0; i <= 4; i += 1) {
-    const y = crisp(pad.top + (priceHeight / 4) * i);
+    const y = Math.round(pad.top + (priceHeight / 4) * i) + 0.5;
     ctx.beginPath();
     ctx.moveTo(pad.left, y);
-    ctx.lineTo(width - pad.right, y);
+    ctx.lineTo(cssWidth - pad.right, y);
     ctx.stroke();
   }
 
   const maPoints = [];
   rows.forEach((row, index) => {
-    const x = crisp(pad.left + step * index + step / 2);
+    const x = Math.round(pad.left + step * index + step / 2) + 0.5;
     const open = numberValue(row.open) ?? 0;
     const close = numberValue(row.close) ?? 0;
     const high = numberValue(row.high) ?? 0;
     const low = numberValue(row.low) ?? 0;
     const up = close >= open;
-    ctx.strokeStyle = up ? "#c23b3f" : "#168158";
-    ctx.fillStyle = up ? "#c23b3f" : "#168158";
-    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = up ? "#bd3c43" : "#168158";
+    ctx.fillStyle = up ? "#bd3c43" : "#168158";
     ctx.beginPath();
     ctx.moveTo(x, yPrice(high));
     ctx.lineTo(x, yPrice(low));
     ctx.stroke();
     const bodyTop = Math.round(yPrice(Math.max(open, close)));
     const bodyHeight = Math.max(2, Math.abs(yPrice(open) - yPrice(close)));
-    ctx.fillRect(Math.round(x - candleWidth / 2), bodyTop, Math.max(2, Math.round(candleWidth)), Math.round(bodyHeight));
+    ctx.fillRect(Math.round(x - candleWidth / 2), bodyTop, Math.max(2, Math.round(candleWidth)), bodyHeight);
     ctx.globalAlpha = 0.25;
     const volY = Math.round(yVol(numberValue(row.vol) ?? 0));
     ctx.fillRect(Math.round(x - candleWidth / 2), volY, Math.max(2, Math.round(candleWidth)), Math.round(volTop + volHeight - volY));
@@ -1002,7 +954,7 @@ function renderKline() {
     if (ma !== null) maPoints.push([x, yPrice(ma)]);
   });
 
-  ctx.strokeStyle = "#245f78";
+  ctx.strokeStyle = "#2d6f91";
   ctx.lineWidth = 1.8;
   ctx.beginPath();
   maPoints.forEach(([x, y], index) => {
@@ -1011,29 +963,29 @@ function renderKline() {
   });
   ctx.stroke();
 
-  ctx.fillStyle = "#67736f";
+  ctx.fillStyle = "#65736d";
   ctx.font = "12px Segoe UI, Arial";
   ctx.textAlign = "right";
   ctx.fillText(formatNumber(maxPrice, 2), pad.left - 8, pad.top + 4);
   ctx.fillText(formatNumber(minPrice, 2), pad.left - 8, pad.top + priceHeight);
   ctx.textAlign = "center";
-  ctx.fillText(rows[0]?.trade_date ?? "", pad.left + 36, height - 12);
-  ctx.fillText(rows[rows.length - 1]?.trade_date ?? "", width - pad.right - 42, height - 12);
+  ctx.fillText(rows[0]?.trade_date ?? "", pad.left + 38, cssHeight - 12);
+  ctx.fillText(rows[rows.length - 1]?.trade_date ?? "", cssWidth - pad.right - 42, cssHeight - 12);
 }
 
 async function loadHistory(tsCode) {
   const tradeDate = toTradeDate(els.tradeDate.value);
-  els.historyInfo.textContent = `${tsCode} 走势加载中`;
+  setText("historyInfo", `${tsCode} 走势加载中`);
   try {
     const response = await fetch(`/api/stock/${encodeURIComponent(tsCode)}/history?end_date=${tradeDate}&days=80`);
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.detail || "历史行情查询失败");
     state.history = payload.rows || [];
-    els.historyInfo.textContent = `${tsCode} · 最近 ${state.history.length} 个交易日`;
+    setText("historyInfo", `${tsCode} / 最近 ${state.history.length} 个交易日`);
     renderKline();
   } catch (error) {
     state.history = [];
-    els.historyInfo.textContent = error.message || "历史行情查询失败";
+    setText("historyInfo", error.message || "历史行情查询失败");
     renderKline();
   }
 }
@@ -1046,231 +998,92 @@ async function selectStock(row) {
 }
 
 function loadMoreCandidatesIfNeeded() {
-  const el = els.candidateList;
-  if (!el || el.scrollTop + el.clientHeight < el.scrollHeight - 60) return;
+  const elNode = els.candidateList;
+  if (!elNode || elNode.scrollTop + elNode.clientHeight < elNode.scrollHeight - 60) return;
   const total = rowBucket(state.activeBucket).length;
   if (state.candidateVisible >= total) return;
   state.candidateVisible = Math.min(total, state.candidateVisible + CANDIDATE_PAGE_SIZE);
   renderCandidates();
 }
 
-function openDataModal() {
-  els.dataModal.hidden = false;
-  els.modalTsCode.value = state.selected?.ts_code || "";
-  els.modalTradeDate.value = els.tradeDate.value || "";
-  els.modalStartDate.value = "";
-  els.modalEndDate.value = "";
-  renderInterfaceTabs();
-  if (window.lucide) window.lucide.createIcons();
+function applyDailyPayload(payload, { fromCache = false } = {}) {
+  state.rows = decorateRows(payload.rows || []);
+  state.summary = payload.summary || {};
+  state.tradeDate = payload.trade_date || "";
+  state.dataSource = fromCache ? "browser" : payload.data_source || "";
+  state.loadError = "";
+  state.recommendationStatus = "idle";
+  state.recommendationError = "";
+  if (payload.trade_date) els.tradeDate.value = fromTradeDate(payload.trade_date);
+  resetVisibleCounts();
+  state.recommendations = decorateRows(payload.recommendations || []);
+  const selectedStillExists = state.rows.find((row) => row.ts_code === state.selected?.ts_code);
+  state.selected = state.recommendations[0] || selectedStillExists || state.rows[0] || null;
+  updateMarket();
+  renderCandidates();
+  renderSelected();
+  renderKline();
+  if (state.selected && !fromCache) loadSelectedStock(state.selected.ts_code);
+  if (payload.trade_date && !fromCache) loadRecommendations(payload.trade_date);
+  if (payload.trade_date && !fromCache) loadIndustryTrends(payload.trade_date);
+  if (fromCache) showToast("先显示上次数据，正在后台刷新");
 }
 
-function closeDataModal() {
-  els.dataModal.hidden = true;
-}
-
-function openBacktestModal() {
-  els.backtestModal.hidden = false;
-  els.backtestEndDate.value = els.tradeDate.value || "";
-  if (!state.backtest) {
-    renderBacktestEmpty();
-  }
-  if (window.lucide) window.lucide.createIcons();
-}
-
-function closeBacktestModal() {
-  els.backtestModal.hidden = true;
-}
-
-function renderInterfaceTabs() {
-  document.querySelectorAll("[data-interface]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.interface === state.activeInterface);
-  });
-}
-
-function renderModalTable(payload) {
-  const columns = payload.columns || [];
-  const rows = payload.rows || [];
-  els.modalTableHead.innerHTML = "";
-  els.modalTableBody.innerHTML = "";
-  const tr = document.createElement("tr");
-  columns.forEach((column) => {
-    const th = document.createElement("th");
-    th.textContent = MODAL_COLUMNS[column] || column;
-    tr.appendChild(th);
-  });
-  els.modalTableHead.appendChild(tr);
-
-  if (!rows.length) {
-    els.modalTableBody.innerHTML = `<tr><td class="empty" colspan="${Math.max(columns.length, 1)}">没有查到数据</td></tr>`;
-    return;
-  }
-
-  const fragment = document.createDocumentFragment();
-  rows.forEach((row) => {
-    const rowEl = document.createElement("tr");
-    columns.forEach((column) => {
-      const td = document.createElement("td");
-      const value = row[column];
-      if (column === "pct_chg" || column === "net_mf_amount") td.className = quoteClass(value);
-      td.textContent = modalValue(column, value);
-      rowEl.appendChild(td);
-    });
-    fragment.appendChild(rowEl);
-  });
-  els.modalTableBody.appendChild(fragment);
-}
-
-async function queryModalData() {
-  const params = new URLSearchParams();
-  const tsCode = els.modalTsCode.value.trim().toUpperCase();
-  const tradeDate = toTradeDate(els.modalTradeDate.value || "");
-  const startDate = toTradeDate(els.modalStartDate.value || "");
-  const endDate = toTradeDate(els.modalEndDate.value || "");
-  if (state.activeInterface !== "stock_basic" && tsCode) params.set("ts_code", tsCode);
-  if (tradeDate) params.set("trade_date", tradeDate);
-  if (startDate) params.set("start_date", startDate);
-  if (endDate) params.set("end_date", endDate);
-  els.modalStatus.textContent = `${INTERFACE_NAMES[state.activeInterface]}查询中`;
-  els.modalQueryBtn.disabled = true;
+async function loadRecommendations(tradeDate) {
+  state.recommendationStatus = "loading";
+  state.recommendationError = "";
+  renderCandidates();
   try {
-    const response = await fetch(`/api/query/${state.activeInterface}?${params.toString()}`);
+    const response = await fetch(`/api/recommendations?trade_date=${tradeDate}&limit=20`);
     const payload = await response.json();
-    if (!response.ok) throw new Error(payload.detail || "查询失败");
-    renderModalTable(payload);
-    els.modalStatus.textContent = `显示 ${payload.count} 条`;
+    if (!response.ok) throw new Error(payload.detail || "推荐池计算失败");
+    if (payload.data_source) state.dataSource = payload.data_source;
+    state.recommendations = decorateRows(payload.rows || []);
+    if (Object.keys(state.basicMap).length) {
+      state.recommendations = state.recommendations.map((row) => ({
+        ...mergeBasic(row),
+        score: row.score,
+        signal: row.signal,
+      }));
+    }
+    state.recommendationStatus = "done";
+    if (state.recommendations.length) {
+      const selectedCode = state.selected?.ts_code;
+      state.selected = state.recommendations.find((row) => row.ts_code === selectedCode) || state.recommendations[0];
+      state.activeBucket = "priority";
+      updateBucketButtons();
+      renderSelected();
+      await loadSelectedStock(state.selected.ts_code);
+    }
+    renderCandidates();
   } catch (error) {
-    els.modalTableHead.innerHTML = "";
-    els.modalTableBody.innerHTML = "";
-    els.modalStatus.textContent = error.message || "查询失败";
-  } finally {
-    els.modalQueryBtn.disabled = false;
+    state.recommendationStatus = "error";
+    state.recommendationError = error.message || "推荐池计算失败";
+    renderCandidates();
   }
 }
 
-function renderBacktestEmpty(message = "点击开始推演后显示结果") {
-  els.backtestTitle.textContent = "等待推演";
-  els.backtestText.textContent = message;
-  els.backtestRules.innerHTML = "";
-  els.backtestMeta.textContent = "未运行";
-  els.backtestTableBody.innerHTML = '<tr><td class="empty" colspan="7">暂无策略结果</td></tr>';
-  els.backtestExampleInfo.textContent = "暂无";
-  els.backtestExamples.innerHTML = '<div class="empty">暂无次日验证样本</div>';
-}
-
-function renderBacktest(payload) {
-  state.backtest = payload;
-  const suggestion = payload.suggestion || {};
-  els.backtestTitle.textContent = suggestion.title || "推演完成";
-  els.backtestText.textContent = suggestion.text || "已完成策略对比。";
-  els.backtestRules.innerHTML = "";
-  (suggestion.rules || []).forEach((rule) => {
-    const item = document.createElement("p");
-    item.textContent = rule;
-    els.backtestRules.appendChild(item);
-  });
-  els.backtestMeta.textContent = `${payload.tested_days || 0} 个交易日 · 验证至 ${payload.validated_until || payload.end_date || "--"}`;
-  els.backtestTableBody.innerHTML = "";
-  const results = payload.results || [];
-  if (!results.length) {
-    els.backtestTableBody.innerHTML = '<tr><td class="empty" colspan="7">样本不足，无法推演</td></tr>';
-    els.backtestExamples.innerHTML = '<div class="empty">暂无次日验证样本</div>';
-    return;
-  }
-  const fragment = document.createDocumentFragment();
-  results.forEach((row, index) => {
-    const tr = document.createElement("tr");
-    if (index === 0) tr.className = "selected";
-    tr.innerHTML = `
-      <td><strong>${row.name}</strong><em>${row.quality_label || ""}</em></td>
-      <td>${row.signal_count}</td>
-      <td>${formatPct(row.win_rate)}</td>
-      <td class="${quoteClass(row.avg_next_close_pct)}">${formatSignedPct(row.avg_next_close_pct)}</td>
-      <td class="${quoteClass(row.avg_next_high_pct)}">${formatSignedPct(row.avg_next_high_pct)}</td>
-      <td>${formatPct(row.stop_hit_rate)}</td>
-      <td>${formatNumber(row.quality_score, 1)}</td>
-    `;
-    fragment.appendChild(tr);
-  });
-  els.backtestTableBody.appendChild(fragment);
-
-  const best = results[0];
-  const examples = best?.examples || [];
-  els.backtestExampleInfo.textContent = examples.length ? `${best.name} · ${examples.length} 条` : "暂无";
-  els.backtestExamples.innerHTML = "";
-  if (!examples.length) {
-    els.backtestExamples.innerHTML = '<div class="empty">最佳策略暂无样本</div>';
-    return;
-  }
-  const cardFragment = document.createDocumentFragment();
-  examples.forEach((row) => {
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "backtest-example";
-    card.innerHTML = `
-      <div>
-        <strong>${candidateName(row)}</strong>
-        <span>${row.ts_code} · ${row.trade_date}</span>
-      </div>
-      <em class="${quoteClass(row.pct_chg)}">${formatPct(row.pct_chg)}</em>
-      <p>${conditionText(row) || stockSubTitle(row)}</p>
-      <b>${nextDayText(row)}</b>
-    `;
-    card.addEventListener("click", () => {
-      closeBacktestModal();
-      selectStock(row);
-    });
-    cardFragment.appendChild(card);
-  });
-  els.backtestExamples.appendChild(cardFragment);
-}
-
-async function runBacktest() {
-  const endDate = toTradeDate(els.backtestEndDate.value || els.tradeDate.value);
-  if (!endDate || endDate.length !== 8) {
-    showToast("请选择有效结束日");
-    return;
-  }
-  const tradeDays = clampNumber(els.backtestDays.value, 4, 20, 4);
-  const perDayLimit = clampNumber(els.backtestLimit.value, 3, 15, 8);
-  els.backtestDays.value = tradeDays;
-  els.backtestLimit.value = perDayLimit;
-  els.runBacktestBtn.disabled = true;
-  els.runBacktestBtn.querySelector("span").textContent = "推演中";
-  els.backtestTitle.textContent = "正在推演";
-  els.backtestText.textContent = "正在逐日读取历史因子并验证次日表现。Tushare 因子接口较慢，首次运行可能需要1-3分钟。";
-  els.backtestMeta.textContent = "运行中";
+async function loadIndustryTrends(tradeDate) {
+  setText("industryInfo", "加载中");
   try {
-    const params = new URLSearchParams({
-      end_date: endDate,
-      trade_days: String(tradeDays),
-      per_day_limit: String(perDayLimit),
-    });
-    const response = await fetch(`/api/backtest/short-swing?${params.toString()}`);
+    const response = await fetch(`/api/industry-trends?trade_date=${tradeDate}&limit=16`);
     const payload = await response.json();
-    if (!response.ok) throw new Error(payload.detail || "推演失败");
-    renderBacktest(payload);
+    if (!response.ok) throw new Error(payload.detail || "行业趋势加载失败");
+    if (payload.data_source) state.dataSource = payload.data_source;
+    state.industryTrends = payload.rows || [];
+    renderIndustryTrends();
   } catch (error) {
-    els.backtestTitle.textContent = "推演失败";
-    els.backtestText.textContent = error.message || "历史推演暂时不可用";
-    els.backtestMeta.textContent = "失败";
-    els.backtestTableBody.innerHTML = '<tr><td class="empty" colspan="7">推演失败</td></tr>';
-  } finally {
-    els.runBacktestBtn.disabled = false;
-    els.runBacktestBtn.querySelector("span").textContent = "开始推演";
+    setText("industryInfo", error.message || "行业趋势加载失败");
   }
 }
 
-function addSelectedToWatchlist() {
-  if (!state.selected) {
-    showToast("先选择一只股票");
-    return;
-  }
-  if (!state.watchlist.includes(state.selected.ts_code)) {
-    state.watchlist.unshift(state.selected.ts_code);
-    state.watchlist = state.watchlist.slice(0, 30);
-    saveJson(STORAGE_KEYS.watchlist, state.watchlist);
-  }
-  showToast(`${state.selected.ts_code} 已加入观察`);
+function loadCachedDaily() {
+  const cached = loadJson(STORAGE_KEYS.lastDaily, null);
+  if (!cached || !cached.rows || !cached.rows.length) return false;
+  const namedRows = cached.rows.filter((row) => row.name).length;
+  if (namedRows / cached.rows.length < 0.8) return false;
+  applyDailyPayload(cached, { fromCache: true });
+  return true;
 }
 
 async function loadStatus() {
@@ -1295,7 +1108,7 @@ async function loadStockBasicInBackground() {
     state.basicMap = payload.items;
     applyBasicToRows();
   } catch {
-    // Names are nice to have;行情本身不能被它拖住。
+    // Stock names are nice to have; market data should remain usable without them.
   }
 }
 
@@ -1321,27 +1134,22 @@ async function queryDaily() {
     saveJson(STORAGE_KEYS.lastDaily, payload);
     if (payload.trade_date && payload.trade_date !== tradeDate) {
       els.tradeDate.value = fromTradeDate(payload.trade_date);
-      showToast(`未到收盘或当日暂无数据，已切换到 ${displayTradeDate(payload.trade_date)}`);
+      showToast(`已切换到有数据的交易日 ${displayTradeDate(payload.trade_date)}`);
     }
     applyDailyPayload(payload);
-    const sourceText = dataSourceText(payload.data_source);
-    if (!payload.fallback_used) showToast(`已加载 ${state.rows.length} 条行情 · ${sourceText}`);
+    if (!payload.fallback_used) showToast(`已加载 ${state.rows.length} 条行情 / ${dataSourceText(payload.data_source)}`);
     if (payload.data_source === "online") loadStockBasicInBackground();
   } catch (error) {
     if (hadCache) {
-      showToast(error.message?.includes("冷却") || error.message?.includes("refused")
-        ? "Tushare 临时冷却，继续显示上次数据"
-        : "刷新较慢，继续显示上次数据");
+      showToast("刷新较慢，继续显示上次数据");
       return;
     }
-    state.loadError = error.name === "AbortError"
-      ? "行情接口响应较慢，请稍后刷新。"
-      : error.message || "行情接口暂时不可用，请稍后刷新。";
+    state.loadError =
+      error.name === "AbortError" ? "行情接口响应较慢，请稍后刷新。" : error.message || "行情接口暂不可用，请稍后刷新。";
     state.rows = [];
     state.summary = {};
     state.selected = null;
     state.history = [];
-    state.analysis = null;
     updateMarket();
     renderCandidates();
     renderSelected();
@@ -1359,11 +1167,264 @@ function exportCsv() {
   window.location.href = `/api/daily.csv?${params.toString()}`;
 }
 
+function openDataModal() {
+  els.dataModal.hidden = false;
+  els.modalTsCode.value = state.selected?.ts_code || "";
+  els.modalTradeDate.value = els.tradeDate.value || "";
+  els.modalStartDate.value = "";
+  els.modalEndDate.value = "";
+  renderInterfaceTabs();
+  iconRefresh();
+}
+
+function closeDataModal() {
+  els.dataModal.hidden = true;
+}
+
+function openBacktestModal() {
+  els.backtestModal.hidden = false;
+  els.backtestEndDate.value = els.tradeDate.value || "";
+  if (!state.backtest) renderBacktestEmpty();
+  iconRefresh();
+}
+
+function closeBacktestModal() {
+  els.backtestModal.hidden = true;
+}
+
+function renderInterfaceTabs() {
+  document.querySelectorAll("[data-interface]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.interface === state.activeInterface);
+  });
+}
+
+function modalValue(column, value) {
+  if (value === null || value === undefined || value === "") return "";
+  if (column === "amount") return formatThousandYuan(value);
+  if (["total_mv", "circ_mv"].includes(column)) return formatTenThousandYuan(value);
+  if (column === "net_mf_amount" || column.includes("amount")) return formatTenThousandYuan(value);
+  if (["turnover_rate", "turnover_rate_f", "volume_ratio", "pe", "pb", "open", "high", "low", "close", "pre_close", "change", "pct_chg"].includes(column)) {
+    return typeof value === "number" ? formatNumber(value, 2) : value;
+  }
+  return value;
+}
+
+function renderModalTable(payload) {
+  const columns = payload.columns || [];
+  const rows = payload.rows || [];
+  clearNode(els.modalTableHead);
+  clearNode(els.modalTableBody);
+  const tr = document.createElement("tr");
+  columns.forEach((column) => {
+    tr.appendChild(el("th", { text: MODAL_COLUMNS[column] || column }));
+  });
+  els.modalTableHead.appendChild(tr);
+  if (!rows.length) {
+    const row = document.createElement("tr");
+    const cell = el("td", { className: "empty", text: "没有查到数据" });
+    cell.colSpan = Math.max(columns.length, 1);
+    row.appendChild(cell);
+    els.modalTableBody.appendChild(row);
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  rows.forEach((rowData) => {
+    const row = document.createElement("tr");
+    columns.forEach((column) => {
+      const cell = el("td", { text: modalValue(column, rowData[column]) });
+      if (column === "pct_chg" || column === "net_mf_amount") cell.className = quoteClass(rowData[column]);
+      row.appendChild(cell);
+    });
+    fragment.appendChild(row);
+  });
+  els.modalTableBody.appendChild(fragment);
+}
+
+async function queryModalData() {
+  const params = new URLSearchParams();
+  const tsCode = els.modalTsCode.value.trim().toUpperCase();
+  const tradeDate = toTradeDate(els.modalTradeDate.value || "");
+  const startDate = toTradeDate(els.modalStartDate.value || "");
+  const endDate = toTradeDate(els.modalEndDate.value || "");
+  if (state.activeInterface !== "stock_basic" && tsCode) params.set("ts_code", tsCode);
+  if (tradeDate) params.set("trade_date", tradeDate);
+  if (startDate) params.set("start_date", startDate);
+  if (endDate) params.set("end_date", endDate);
+  setText("modalStatus", `${INTERFACE_NAMES[state.activeInterface]}查询中`);
+  els.modalQueryBtn.disabled = true;
+  try {
+    const response = await fetch(`/api/query/${state.activeInterface}?${params.toString()}`);
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || "查询失败");
+    renderModalTable(payload);
+    setText("modalStatus", `显示 ${payload.count} 条`);
+  } catch (error) {
+    clearNode(els.modalTableHead);
+    clearNode(els.modalTableBody);
+    setText("modalStatus", error.message || "查询失败");
+  } finally {
+    els.modalQueryBtn.disabled = false;
+  }
+}
+
+function renderBacktestEmpty(message = "点击开始推演后显示结果") {
+  setText("backtestTitle", "等待推演");
+  setText("backtestText", message);
+  clearNode(els.backtestRules);
+  setText("backtestMeta", "未运行");
+  clearNode(els.backtestTableBody);
+  const row = document.createElement("tr");
+  const cell = el("td", { className: "empty", text: "暂无策略结果" });
+  cell.colSpan = 7;
+  row.appendChild(cell);
+  els.backtestTableBody.appendChild(row);
+  setText("backtestExampleInfo", "暂无");
+  clearNode(els.backtestExamples);
+  els.backtestExamples.appendChild(emptyNode("暂无次日验证样本"));
+}
+
+function renderBacktest(payload) {
+  state.backtest = payload;
+  const suggestion = payload.suggestion || {};
+  setText("backtestTitle", suggestion.title || "推演完成");
+  setText("backtestText", suggestion.text || "已完成策略对比。");
+  clearNode(els.backtestRules);
+  (suggestion.rules || []).forEach((rule) => {
+    els.backtestRules.appendChild(el("p", { text: rule }));
+  });
+  setText("backtestMeta", `${payload.tested_days || 0} 个交易日 / 验证至 ${payload.validated_until || payload.end_date || "--"}`);
+  clearNode(els.backtestTableBody);
+  const results = payload.results || [];
+  if (!results.length) {
+    const row = document.createElement("tr");
+    const cell = el("td", { className: "empty", text: "样本不足，无法推演" });
+    cell.colSpan = 7;
+    row.appendChild(cell);
+    els.backtestTableBody.appendChild(row);
+    clearNode(els.backtestExamples);
+    els.backtestExamples.appendChild(emptyNode("暂无次日验证样本"));
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  results.forEach((result, index) => {
+    const row = document.createElement("tr");
+    if (index === 0) row.className = "selected";
+    [
+      `${result.name || "--"} ${result.quality_label || ""}`,
+      result.signal_count,
+      formatPct(result.win_rate),
+      formatSignedPct(result.avg_next_close_pct),
+      formatSignedPct(result.avg_next_high_pct),
+      formatPct(result.stop_hit_rate),
+      formatNumber(result.quality_score, 1),
+    ].forEach((value, cellIndex) => {
+      const cell = el("td", { text: value });
+      if ([3, 4].includes(cellIndex)) cell.className = quoteClass(value);
+      row.appendChild(cell);
+    });
+    fragment.appendChild(row);
+  });
+  els.backtestTableBody.appendChild(fragment);
+
+  const best = results[0];
+  const examples = best?.examples || [];
+  setText("backtestExampleInfo", examples.length ? `${best.name} / ${examples.length} 条` : "暂无");
+  clearNode(els.backtestExamples);
+  if (!examples.length) {
+    els.backtestExamples.appendChild(emptyNode("最佳策略暂无样本"));
+    return;
+  }
+  const cardFragment = document.createDocumentFragment();
+  examples.forEach((row) => {
+    const card = el("button", { className: "backtest-example", type: "button" });
+    card.append(
+      el("div", { className: "example-main" }, [
+        el("strong", { text: candidateName(row) }),
+        el("span", { className: quoteClass(row.pct_chg), text: formatPct(row.pct_chg) }),
+      ]),
+      el("p", { text: `${row.ts_code} / ${row.trade_date}` }),
+      el("p", { text: conditionText(row) || stockSubTitle(row) }),
+      el("p", { text: nextDayText(row) }),
+    );
+    card.addEventListener("click", () => {
+      closeBacktestModal();
+      selectStock(row);
+    });
+    cardFragment.appendChild(card);
+  });
+  els.backtestExamples.appendChild(cardFragment);
+}
+
+async function runBacktest() {
+  const endDate = toTradeDate(els.backtestEndDate.value || els.tradeDate.value);
+  if (!endDate || endDate.length !== 8) {
+    showToast("请选择有效结束日");
+    return;
+  }
+  const tradeDays = clampNumber(els.backtestDays.value, 4, 20, 4);
+  const perDayLimit = clampNumber(els.backtestLimit.value, 3, 15, 8);
+  els.backtestDays.value = tradeDays;
+  els.backtestLimit.value = perDayLimit;
+  els.runBacktestBtn.disabled = true;
+  els.runBacktestBtn.querySelector("span").textContent = "推演中";
+  setText("backtestTitle", "正在推演");
+  setText("backtestText", "正在读取历史因子并验证次日表现，首次运行可能较慢。");
+  setText("backtestMeta", "运行中");
+  try {
+    const params = new URLSearchParams({
+      end_date: endDate,
+      trade_days: String(tradeDays),
+      per_day_limit: String(perDayLimit),
+    });
+    const response = await fetch(`/api/backtest/short-swing?${params.toString()}`);
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || "推演失败");
+    renderBacktest(payload);
+  } catch (error) {
+    setText("backtestTitle", "推演失败");
+    setText("backtestText", error.message || "历史推演暂时不可用");
+    setText("backtestMeta", "失败");
+    clearNode(els.backtestTableBody);
+    const row = document.createElement("tr");
+    const cell = el("td", { className: "empty", text: "推演失败" });
+    cell.colSpan = 7;
+    row.appendChild(cell);
+    els.backtestTableBody.appendChild(row);
+  } finally {
+    els.runBacktestBtn.disabled = false;
+    els.runBacktestBtn.querySelector("span").textContent = "开始推演";
+  }
+}
+
+function addSelectedToWatchlist() {
+  if (!state.selected) {
+    showToast("先选择一只股票");
+    return;
+  }
+  if (!state.watchlist.includes(state.selected.ts_code)) {
+    state.watchlist.unshift(state.selected.ts_code);
+    state.watchlist = state.watchlist.slice(0, 30);
+    saveJson(STORAGE_KEYS.watchlist, state.watchlist);
+  }
+  showToast(`${state.selected.ts_code} 已加入观察`);
+}
+
+function updateBucketButtons() {
+  document.querySelectorAll("[data-bucket]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.bucket === state.activeBucket);
+  });
+}
+
 function bind() {
   [
+    "headerSubtitle",
     "tradeDate",
     "queryBtn",
     "exportBtn",
+    "dataModalBtn",
+    "backtestModalBtn",
+    "toolDataBtn",
+    "toolBacktestBtn",
     "statusBadge",
     "marketAnswer",
     "dataDateLabel",
@@ -1394,8 +1455,6 @@ function bind() {
     "historyInfo",
     "klineChart",
     "addSelectedBtn",
-    "dataModalBtn",
-    "backtestModalBtn",
     "dataModal",
     "backtestModal",
     "closeDataModalBtn",
@@ -1410,7 +1469,6 @@ function bind() {
     "modalTableBody",
     "forecastMetric",
     "trendMetric",
-    "moneyMetric",
     "supportMetric",
     "resistanceMetric",
     "trendBar",
@@ -1453,12 +1511,13 @@ function bind() {
   });
 
   state.watchlist = loadJson(STORAGE_KEYS.watchlist, []);
-
   els.queryBtn.addEventListener("click", queryDaily);
   els.exportBtn.addEventListener("click", exportCsv);
   els.addSelectedBtn.addEventListener("click", addSelectedToWatchlist);
   els.dataModalBtn.addEventListener("click", openDataModal);
   els.backtestModalBtn.addEventListener("click", openBacktestModal);
+  if (els.toolDataBtn) els.toolDataBtn.addEventListener("click", openDataModal);
+  if (els.toolBacktestBtn) els.toolBacktestBtn.addEventListener("click", openBacktestModal);
   els.closeDataModalBtn.addEventListener("click", closeDataModal);
   els.closeBacktestModalBtn.addEventListener("click", closeBacktestModal);
   els.dataModal.addEventListener("click", (event) => {
@@ -1477,7 +1536,7 @@ function bind() {
     button.addEventListener("click", () => {
       state.activeInterface = button.dataset.interface;
       renderInterfaceTabs();
-      els.modalStatus.textContent = `已切换到${INTERFACE_NAMES[state.activeInterface]}`;
+      setText("modalStatus", `已切换到${INTERFACE_NAMES[state.activeInterface]}`);
     });
   });
   els.candidateList.addEventListener("scroll", loadMoreCandidatesIfNeeded);
@@ -1486,6 +1545,7 @@ function bind() {
       state.activeBucket = button.dataset.bucket;
       state.candidateVisible = CANDIDATE_PAGE_SIZE;
       els.candidateList.scrollTop = 0;
+      updateBucketButtons();
       renderCandidates();
     });
   });
@@ -1493,7 +1553,7 @@ function bind() {
 
 window.addEventListener("DOMContentLoaded", async () => {
   bind();
-  if (window.lucide) window.lucide.createIcons();
+  iconRefresh();
   if (!els.tradeDate.value) {
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
     els.tradeDate.value = yesterday.toISOString().slice(0, 10);

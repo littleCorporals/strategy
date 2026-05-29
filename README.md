@@ -36,6 +36,8 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 - `TUSHARE_MIN_INTERVAL`：最小请求间隔，默认 `0.65` 秒，用来降低触发限流的概率。
 - `MARKET_CACHE_DB`：本地 SQLite 缓存库位置，默认 `data/market_cache.sqlite3`。
 - `MARKET_REFRESH_AFTER`：当日行情允许刷新时间，默认 `15:10`。
+- `APP_ALLOWED_ORIGINS`：可选 CORS 来源白名单，逗号分隔；默认只允许本地页面。
+- `ADMIN_TOKEN`：可选管理接口 token；设置后请求 `/api/admin/*` 需要带 `X-Admin-Token`。
 
 ## 本地数据缓存
 

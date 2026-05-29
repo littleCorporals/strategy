@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import ipaddress
+import os
+from urllib.parse import urlparse
 from typing import Any, Annotated
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from app.core.config import STATIC_DIR
+from app.core.config import ADMIN_TOKEN_ENV, STATIC_DIR
 from app.db import model_repo
 from app.services import model_pipeline
 from modeling.features.registry import list_feature_sets
@@ -14,7 +17,47 @@ from modeling.labels.registry import list_label_sets
 from modeling.pipelines.service import planned_pipeline
 
 
-router = APIRouter()
+def _is_loopback(host: str | None) -> bool:
+    if not host:
+        return False
+    if host in {"testclient", "testserver"}:
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return host in {"localhost", "localhost.localdomain"}
+
+
+def _is_local_host_header(host: str | None) -> bool:
+    if not host:
+        return True
+    return _is_loopback(host.split(":", 1)[0].strip("[]"))
+
+
+def _is_local_origin(value: str | None) -> bool:
+    if not value:
+        return True
+    parsed = urlparse(value)
+    return _is_loopback(parsed.hostname)
+
+
+async def require_admin_access(
+    request: Request,
+    origin: Annotated[str | None, Header(alias="Origin")] = None,
+    referer: Annotated[str | None, Header(alias="Referer")] = None,
+    x_admin_token: Annotated[str | None, Header(alias="X-Admin-Token")] = None,
+) -> None:
+    client_host = request.client.host if request.client else None
+    if not _is_loopback(client_host) or not _is_local_host_header(request.headers.get("host")):
+        raise HTTPException(status_code=403, detail="Admin API is only available from this machine.")
+    if not _is_local_origin(origin) or not _is_local_origin(referer):
+        raise HTTPException(status_code=403, detail="Cross-site admin requests are blocked.")
+    expected_token = os.getenv(ADMIN_TOKEN_ENV, "").strip()
+    if expected_token and x_admin_token != expected_token:
+        raise HTTPException(status_code=401, detail="Admin token required.")
+
+
+router = APIRouter(dependencies=[Depends(require_admin_access)])
 
 
 async def pipeline_overview() -> dict[str, Any]:

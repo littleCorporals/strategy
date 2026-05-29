@@ -197,6 +197,10 @@ async def index() -> HTMLResponse:
 async def status() -> dict[str, Any]:
     token = os.getenv(TOKEN_ENV)
     db_stats = await market_cache.stats()
+    safe_db_stats = {
+        **db_stats,
+        "path": "local sqlite cache" if db_stats.get("path") else "",
+    }
     latest_db_trade_date = await market_cache.latest_trade_date("daily")
     default_trade_date = latest_db_trade_date or _latest_fetchable_trade_date(_today_trade_date())
     ts_status = market_data.tushare_status()
@@ -204,17 +208,17 @@ async def status() -> dict[str, Any]:
         "ok": True,
         "sdk_available": ts_status["sdk_available"],
         "token_configured": bool(token),
-        "token_preview": _token_preview(token),
-        "proxy_url": os.getenv(PROXY_ENV, DEFAULT_PROXY_URL),
+        "token_preview": None,
+        "proxy_url": None,
         "min_interval": ts_status["min_interval"],
         "cache_ttl_seconds": CACHE_TTL_SECONDS,
-        "database": db_stats,
+        "database": safe_db_stats,
         "database_ready": True,
         "default_trade_date": default_trade_date,
         "latest_db_trade_date": latest_db_trade_date,
         "online_refresh_after": DAILY_REFRESH_AFTER,
         "tushare_blocked_remaining_seconds": ts_status["blocked_remaining_seconds"],
-        "tushare_block_message": ts_status["blocked_message"],
+        "tushare_block_message": "upstream temporarily cooling down" if ts_status["blocked_message"] else "",
     }
 
 
