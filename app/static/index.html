@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>A股策略后台</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260529-admin-console-8" />
-    <script src="/static/app.js?v=20260529-admin-console-8" defer></script>
+    <link rel="stylesheet" href="/static/styles.css?v=20260529-admin-console-9" />
+    <script src="/static/app.js?v=20260529-admin-console-9" defer></script>
   </head>
   <body>
     <main class="admin-shell">
@@ -181,125 +181,131 @@
 
         <section class="view" data-view-panel="stock">
           <section class="stock-view-grid">
-            <section class="panel selected-panel">
-              <header class="panel-head">
-                <div>
-                  <span>Selected</span>
-                  <h3 id="selectedCode">未选择</h3>
+            <section class="stock-stack stock-left">
+              <section class="panel selected-panel">
+                <header class="panel-head">
+                  <div>
+                    <span>Selected</span>
+                    <h3 id="selectedCode">未选择</h3>
+                  </div>
+                  <button id="addSelectedBtn" type="button" title="加入观察">
+                    <i data-lucide="star"></i>
+                  </button>
+                </header>
+                <div class="quote-grid">
+                  <div><span>收盘</span><strong id="selectedClose">--</strong></div>
+                  <div><span>涨跌</span><strong id="selectedPct">--</strong></div>
+                  <div><span>成交额</span><strong id="selectedAmount">--</strong></div>
+                  <div><span>处理</span><strong id="decisionBadge">--</strong></div>
                 </div>
-                <button id="addSelectedBtn" type="button" title="加入观察">
-                  <i data-lucide="star"></i>
-                </button>
-              </header>
-              <div class="quote-grid">
-                <div><span>收盘</span><strong id="selectedClose">--</strong></div>
-                <div><span>涨跌</span><strong id="selectedPct">--</strong></div>
-                <div><span>成交额</span><strong id="selectedAmount">--</strong></div>
-                <div><span>处理</span><strong id="decisionBadge">--</strong></div>
-              </div>
+              </section>
+
+              <section class="panel plan-panel">
+                <header class="panel-head">
+                  <div>
+                    <span>Plan</span>
+                    <h3 id="planTitle">先选择一只股票</h3>
+                  </div>
+                </header>
+                <p id="planReason">计划会结合趋势、资金、估值和压力位生成。</p>
+                <div class="plan-grid">
+                  <div><span>观察买点</span><strong id="planEntry">--</strong></div>
+                  <div><span>放弃线</span><strong id="planStop">--</strong></div>
+                  <div><span>压力目标</span><strong id="planTarget">--</strong></div>
+                  <div><span>仓位</span><strong id="planPosition">--</strong></div>
+                </div>
+                <em id="planWarning">所有结论只作为复盘和计划参考。</em>
+              </section>
+
+              <section class="panel indicators-panel">
+                <header class="panel-head">
+                  <div>
+                    <span>Indicators</span>
+                    <h3>关键读数</h3>
+                  </div>
+                </header>
+                <div class="analysis-grid">
+                  <div><span>5日</span><strong id="trend5Metric">--</strong></div>
+                  <div><span>20日</span><strong id="trend20Metric">--</strong></div>
+                  <div><span>量能</span><strong id="volumeMetric">--</strong></div>
+                  <div><span>换手</span><strong id="turnoverMetric">--</strong></div>
+                  <div><span>PE</span><strong id="peMetric">--</strong></div>
+                  <div><span>PB</span><strong id="pbMetric">--</strong></div>
+                </div>
+                <p id="analysisNotes">选择股票后显示风险点。</p>
+              </section>
             </section>
 
-            <section class="panel plan-panel">
-              <header class="panel-head">
-                <div>
-                  <span>Plan</span>
-                  <h3 id="planTitle">先选择一只股票</h3>
+            <section class="stock-stack stock-main">
+              <section class="panel chart-panel">
+                <header class="panel-head">
+                  <div>
+                    <span>Price</span>
+                    <h3>价格走势</h3>
+                  </div>
+                  <p id="historyInfo">选择股票后加载走势</p>
+                </header>
+                <div class="legend">
+                  <span><b class="red"></b>上涨</span>
+                  <span><b class="green"></b>下跌</span>
+                  <span><b class="blue"></b>5日线</span>
                 </div>
-              </header>
-              <p id="planReason">计划会结合趋势、资金、估值和压力位生成。</p>
-              <div class="plan-grid">
-                <div><span>观察买点</span><strong id="planEntry">--</strong></div>
-                <div><span>放弃线</span><strong id="planStop">--</strong></div>
-                <div><span>压力目标</span><strong id="planTarget">--</strong></div>
-                <div><span>仓位</span><strong id="planPosition">--</strong></div>
-              </div>
-              <em id="planWarning">所有结论只作为复盘和计划参考。</em>
+                <canvas id="klineChart" width="960" height="360" aria-label="价格走势"></canvas>
+              </section>
+
+              <section class="panel source-panel">
+                <header class="panel-head">
+                  <div>
+                    <span>Sources</span>
+                    <h3>消息材料</h3>
+                  </div>
+                  <p id="sourceInfo">暂无来源</p>
+                </header>
+                <div class="source-list" id="sourceList"></div>
+              </section>
             </section>
 
-            <section class="panel chart-panel wide-panel">
-              <header class="panel-head">
-                <div>
-                  <span>Price</span>
-                  <h3>价格走势</h3>
+            <section class="stock-stack stock-right">
+              <section class="panel recommendation-panel">
+                <header class="panel-head">
+                  <div>
+                    <span>Decision</span>
+                    <h3 id="recommendTitle">等待推荐</h3>
+                  </div>
+                </header>
+                <p id="recommendReason">消息源和行情确认后显示。</p>
+                <div class="signal-grid">
+                  <div><span>明日倾向</span><strong id="forecastMetric">--</strong></div>
+                  <div><span>趋势</span><strong id="trendMetric">--</strong></div>
+                  <div><span>支撑</span><strong id="supportMetric">--</strong></div>
+                  <div><span>压力</span><strong id="resistanceMetric">--</strong></div>
                 </div>
-                <p id="historyInfo">选择股票后加载走势</p>
-              </header>
-              <div class="legend">
-                <span><b class="red"></b>上涨</span>
-                <span><b class="green"></b>下跌</span>
-                <span><b class="blue"></b>5日线</span>
-              </div>
-              <canvas id="klineChart" width="960" height="360" aria-label="价格走势"></canvas>
-            </section>
+                <div class="bar-list">
+                  <label><span>趋势强度</span><b><i id="trendBar"></i></b></label>
+                  <label><span>推荐信心</span><b><i id="confidenceBar"></i></b></label>
+                </div>
+                <p class="risk-line" id="riskWarning">等待消息核验。</p>
+              </section>
 
-            <section class="panel recommendation-panel">
-              <header class="panel-head">
-                <div>
-                  <span>Decision</span>
-                  <h3 id="recommendTitle">等待推荐</h3>
+              <section class="panel money-flow-panel">
+                <header class="panel-head">
+                  <div>
+                    <span>Money Flow</span>
+                    <h3 id="moneyFlowTitle">等待资金数据</h3>
+                  </div>
+                  <p id="moneyFlowStrength">--</p>
+                </header>
+                <p id="moneyFlowSummary">选择股票后显示主力资金方向。</p>
+                <div class="money-grid">
+                  <div><span>主力净额</span><strong id="mainMoneyNet">--</strong></div>
+                  <div><span>超大单</span><strong id="extraLargeMoney">--</strong></div>
+                  <div><span>大单</span><strong id="largeMoney">--</strong></div>
+                  <div><span>总净流</span><strong id="totalMoneyNet">--</strong></div>
                 </div>
-              </header>
-              <p id="recommendReason">消息源和行情确认后显示。</p>
-              <div class="signal-grid">
-                <div><span>明日倾向</span><strong id="forecastMetric">--</strong></div>
-                <div><span>趋势</span><strong id="trendMetric">--</strong></div>
-                <div><span>支撑</span><strong id="supportMetric">--</strong></div>
-                <div><span>压力</span><strong id="resistanceMetric">--</strong></div>
-              </div>
-              <div class="bar-list">
-                <label><span>趋势强度</span><b><i id="trendBar"></i></b></label>
-                <label><span>推荐信心</span><b><i id="confidenceBar"></i></b></label>
-              </div>
-              <p class="risk-line" id="riskWarning">等待消息核验。</p>
-            </section>
-
-            <section class="panel">
-              <header class="panel-head">
-                <div>
-                  <span>Money Flow</span>
-                  <h3 id="moneyFlowTitle">等待资金数据</h3>
+                <div class="bar-list">
+                  <label><span>资金力度</span><b><i id="moneyStrengthBar"></i></b></label>
                 </div>
-                <p id="moneyFlowStrength">--</p>
-              </header>
-              <p id="moneyFlowSummary">选择股票后显示主力资金方向。</p>
-              <div class="money-grid">
-                <div><span>主力净额</span><strong id="mainMoneyNet">--</strong></div>
-                <div><span>超大单</span><strong id="extraLargeMoney">--</strong></div>
-                <div><span>大单</span><strong id="largeMoney">--</strong></div>
-                <div><span>总净流</span><strong id="totalMoneyNet">--</strong></div>
-              </div>
-              <div class="bar-list">
-                <label><span>资金力度</span><b><i id="moneyStrengthBar"></i></b></label>
-              </div>
-            </section>
-
-            <section class="panel">
-              <header class="panel-head">
-                <div>
-                  <span>Indicators</span>
-                  <h3>关键读数</h3>
-                </div>
-              </header>
-              <div class="analysis-grid">
-                <div><span>5日</span><strong id="trend5Metric">--</strong></div>
-                <div><span>20日</span><strong id="trend20Metric">--</strong></div>
-                <div><span>量能</span><strong id="volumeMetric">--</strong></div>
-                <div><span>换手</span><strong id="turnoverMetric">--</strong></div>
-                <div><span>PE</span><strong id="peMetric">--</strong></div>
-                <div><span>PB</span><strong id="pbMetric">--</strong></div>
-              </div>
-              <p id="analysisNotes">选择股票后显示风险点。</p>
-            </section>
-
-            <section class="panel source-panel wide-panel">
-              <header class="panel-head">
-                <div>
-                  <span>Sources</span>
-                  <h3>消息材料</h3>
-                </div>
-                <p id="sourceInfo">暂无来源</p>
-              </header>
-              <div class="source-list" id="sourceList"></div>
+              </section>
             </section>
           </section>
         </section>

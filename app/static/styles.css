@@ -317,22 +317,17 @@ input {
 
 .stock-view-grid {
   display: grid;
-  grid-template-columns: minmax(260px, 0.74fr) minmax(340px, 0.96fr) minmax(420px, 1.2fr);
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr) minmax(300px, 360px);
   gap: 12px;
   align-items: start;
+  max-width: 1880px;
 }
 
-.stock-view-grid .recommendation-panel {
-  grid-column: 3;
-  grid-row: 1;
-}
-
-.stock-view-grid .chart-panel {
-  grid-column: 1 / span 2;
-}
-
-.stock-view-grid .source-panel {
-  grid-column: 1 / -1;
+.stock-stack {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
 }
 
 .panel,
@@ -767,7 +762,7 @@ input {
 
 canvas {
   width: calc(100% - 28px);
-  height: 340px;
+  height: 420px;
   display: block;
   margin: 10px 14px 0;
   border: 1px solid var(--line-soft);
@@ -1045,19 +1040,19 @@ tr.selected td {
     grid-template-columns: 1fr;
   }
 
-  .stock-view-grid {
-    grid-template-columns: minmax(280px, 0.82fr) minmax(420px, 1.18fr);
-  }
-
-  .stock-view-grid .recommendation-panel,
-  .stock-view-grid .chart-panel,
-  .stock-view-grid .source-panel {
-    grid-column: 1 / -1;
-    grid-row: auto;
-  }
-
   .industry-board {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1180px) {
+  .stock-view-grid {
+    grid-template-columns: minmax(280px, 0.9fr) minmax(520px, 1.4fr);
+  }
+
+  .stock-right {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -1151,11 +1146,9 @@ tr.selected td {
     grid-template-columns: 1fr;
   }
 
-  .stock-view-grid .recommendation-panel,
-  .stock-view-grid .chart-panel,
-  .stock-view-grid .source-panel {
+  .stock-right {
     grid-column: auto;
-    grid-row: auto;
+    grid-template-columns: 1fr;
   }
 
   .compact-list,
