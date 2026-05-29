@@ -695,11 +695,17 @@ canvas {
 }
 
 .info-layout {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  align-items: start;
+  column-count: 4;
+  column-gap: 12px;
   margin-top: 12px;
+}
+
+.info-layout > .panel {
+  display: inline-block;
+  width: 100%;
+  margin: 0 0 12px;
+  vertical-align: top;
+  break-inside: avoid;
 }
 
 .industry-list,
@@ -928,7 +934,7 @@ tr.selected td {
   }
 
   .info-layout {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-count: 2;
   }
 }
 
@@ -1014,11 +1020,14 @@ tr.selected td {
   }
 
   .detail-rail,
-  .info-layout,
   .backtest-grid,
   .query-grid,
   .backtest-toolbar {
     grid-template-columns: 1fr;
+  }
+
+  .info-layout {
+    column-count: 1;
   }
 
   .candidate-table {
