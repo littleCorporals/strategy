@@ -4,12 +4,22 @@ const STORAGE_KEYS = {
   lastDaily: "strategyDesk.lastDaily.v3",
 };
 const CANDIDATE_PAGE_SIZE = 14;
+const OVERVIEW_PREVIEW_SIZE = 6;
+
+const VIEW_META = {
+  overview: { eyebrow: "Market Console", title: "市场总览" },
+  candidates: { eyebrow: "Candidates", title: "候选列表" },
+  stock: { eyebrow: "Stock Analysis", title: "个股分析" },
+  industry: { eyebrow: "Industry", title: "行业趋势" },
+  tools: { eyebrow: "Tools", title: "数据工具" },
+};
 
 const state = {
   rows: [],
   summary: {},
   history: [],
   selected: null,
+  activeView: "overview",
   activeBucket: "priority",
   watchlist: [],
   basicMap: {},
@@ -327,6 +337,7 @@ function setLoading(isLoading, requestedTradeDate = "") {
   document.body.classList.toggle("is-loading", isLoading);
   els.queryBtn.disabled = isLoading;
   els.exportBtn.disabled = isLoading || state.rows.length === 0;
+  if (els.toolExportBtn) els.toolExportBtn.disabled = isLoading || state.rows.length === 0;
   els.queryBtn.querySelector("span").textContent = isLoading ? "刷新中" : "刷新";
   if (!isLoading) return;
   state.loadError = "";
@@ -337,6 +348,7 @@ function setLoading(isLoading, requestedTradeDate = "") {
   setText("candidateInfo", "加载中");
   clearNode(els.candidateList);
   els.candidateList.appendChild(emptyNode("正在加载行情...", "loading-card"));
+  renderOverviewCandidates([]);
 }
 
 function updateStatus(status) {
@@ -569,38 +581,34 @@ function rowBucket(bucket) {
     .sort((a, b) => (numberValue(a.pct_chg) ?? 0) - (numberValue(b.pct_chg) ?? 0));
 }
 
-function renderCandidates() {
-  const allRows = rowBucket(state.activeBucket);
-  const rows = allRows.slice(0, state.candidateVisible);
-  if (!state.rows.length) setText("candidateInfo", "等待行情");
-  else if (state.recommendationStatus === "loading") setText("candidateInfo", `计算中 / ${state.rows.length} 条`);
-  else if (state.recommendationStatus === "error") setText("candidateInfo", "推荐失败");
-  else setText("candidateInfo", `${rows.length}/${allRows.length} 只`);
+function emptyCandidateMessage() {
+  const messages = {
+    loading: "候选池正在计算，会先读取行情、指标和次日验证。",
+    error: `推荐池失败：${state.recommendationError || "请稍后刷新"}。可以切到“活跃”看全市场。`,
+    done: "当前交易日没有股票满足这个分类。",
+    idle: "等待行情数据。",
+  };
+  return messages[state.recommendationStatus] || messages.idle;
+}
 
-  clearNode(els.candidateList);
-  if (!rows.length) {
-    const messages = {
-      loading: "候选池正在计算，会先读取行情、指标和次日验证。",
-      error: `推荐池失败：${state.recommendationError || "请稍后刷新"}。可以切到“活跃”看全市场。`,
-      done: "当前交易日没有股票满足这个分类。",
-      idle: "等待行情数据。",
-    };
-    els.candidateList.appendChild(emptyNode(messages[state.recommendationStatus] || messages.idle));
-    return;
-  }
-
-  const fragment = document.createDocumentFragment();
-  rows.forEach((row) => {
-    const nextText = nextDayText(row);
-    const rowButton = el("button", {
-      className: `candidate-row${row.ts_code === state.selected?.ts_code ? " selected" : ""}`,
-      type: "button",
-      title: [row.recommend_reason || row.signal || "", conditionText(row), nextText].filter(Boolean).join(" / "),
-    });
-    const stock = el("span", { className: "candidate-stock" }, [
-      el("strong", { text: candidateName(row) }),
-      el("small", { text: row.ts_code || "--" }),
-    ]);
+function candidateButton(row, { compact = false } = {}) {
+  const nextText = nextDayText(row);
+  const rowButton = el("button", {
+    className: `${compact ? "compact-row" : "candidate-row"}${row.ts_code === state.selected?.ts_code ? " selected" : ""}`,
+    type: "button",
+    title: [row.recommend_reason || row.signal || "", conditionText(row), nextText].filter(Boolean).join(" / "),
+  });
+  const stock = el("span", { className: "candidate-stock" }, [
+    el("strong", { text: candidateName(row) }),
+    el("small", { text: row.ts_code || "--" }),
+  ]);
+  if (compact) {
+    rowButton.append(
+      stock,
+      el("span", { className: "muted-cell", text: row.industry || row.area || "--" }),
+      el("strong", { className: quoteClass(row.pct_chg), text: formatPct(row.pct_chg) }),
+    );
+  } else {
     rowButton.append(
       stock,
       el("span", { className: "muted-cell", text: row.industry || row.area || "--" }),
@@ -609,8 +617,42 @@ function renderCandidates() {
       el("span", { text: formatNumber(row.score, 1) }),
       el("span", { className: "signal-cell", text: row.recommend_reason || row.signal || stockSubTitle(row) }),
     );
-    rowButton.addEventListener("click", () => selectStock(row));
-    fragment.appendChild(rowButton);
+  }
+  rowButton.addEventListener("click", () => selectStock(row));
+  return rowButton;
+}
+
+function renderOverviewCandidates(rows) {
+  if (!els.overviewCandidateList) return;
+  clearNode(els.overviewCandidateList);
+  const previewRows = rows.slice(0, OVERVIEW_PREVIEW_SIZE);
+  if (!previewRows.length) {
+    els.overviewCandidateList.appendChild(emptyNode(emptyCandidateMessage()));
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  previewRows.forEach((row) => fragment.appendChild(candidateButton(row, { compact: true })));
+  els.overviewCandidateList.appendChild(fragment);
+}
+
+function renderCandidates() {
+  const allRows = rowBucket(state.activeBucket);
+  const rows = allRows.slice(0, state.candidateVisible);
+  if (!state.rows.length) setText("candidateInfo", "等待行情");
+  else if (state.recommendationStatus === "loading") setText("candidateInfo", `计算中 / ${state.rows.length} 条`);
+  else if (state.recommendationStatus === "error") setText("candidateInfo", "推荐失败");
+  else setText("candidateInfo", `${rows.length}/${allRows.length} 只`);
+
+  renderOverviewCandidates(allRows);
+  clearNode(els.candidateList);
+  if (!rows.length) {
+    els.candidateList.appendChild(emptyNode(emptyCandidateMessage()));
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  rows.forEach((row) => {
+    fragment.appendChild(candidateButton(row));
   });
   els.candidateList.appendChild(fragment);
 
@@ -619,9 +661,41 @@ function renderCandidates() {
   }
 }
 
+function industryButton(row, { compact = false } = {}) {
+  const item = el("button", { className: compact ? "compact-row industry-compact-row" : "industry-row", type: "button" });
+  item.append(
+    el("div", { className: "industry-main" }, [
+      el("strong", { text: row.industry || "未分类" }),
+      el("em", { className: quoteClass(row.avg_pct_chg), text: formatPct(row.avg_pct_chg) }),
+    ]),
+    el("p", { text: `上涨 ${row.up_count || 0}/${row.count || 0} / 龙头 ${row.top_stock?.name || row.top_stock?.ts_code || "--"}` }),
+  );
+  item.addEventListener("click", () => {
+    const match =
+      state.recommendations.find((stock) => stock.industry === row.industry) ||
+      state.rows.find((stock) => stock.industry === row.industry);
+    if (match) selectStock(match);
+  });
+  return item;
+}
+
+function renderOverviewIndustryTrends(rows) {
+  if (!els.overviewIndustryList) return;
+  clearNode(els.overviewIndustryList);
+  const previewRows = rows.slice(0, OVERVIEW_PREVIEW_SIZE);
+  if (!previewRows.length) {
+    els.overviewIndustryList.appendChild(emptyNode("暂无行业趋势"));
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  previewRows.forEach((row) => fragment.appendChild(industryButton(row, { compact: true })));
+  els.overviewIndustryList.appendChild(fragment);
+}
+
 function renderIndustryTrends() {
   const rows = state.industryTrends || [];
   setText("industryInfo", rows.length ? `${rows.length} 个行业` : "暂无行业");
+  renderOverviewIndustryTrends(rows);
   clearNode(els.industryList);
   if (!rows.length) {
     els.industryList.appendChild(emptyNode("暂无行业趋势"));
@@ -629,21 +703,7 @@ function renderIndustryTrends() {
   }
   const fragment = document.createDocumentFragment();
   rows.forEach((row) => {
-    const item = el("button", { className: "industry-row", type: "button" });
-    item.append(
-      el("div", { className: "industry-main" }, [
-        el("strong", { text: row.industry || "未分类" }),
-        el("em", { className: quoteClass(row.avg_pct_chg), text: formatPct(row.avg_pct_chg) }),
-      ]),
-      el("p", { text: `上涨 ${row.up_count || 0}/${row.count || 0} / 龙头 ${row.top_stock?.name || row.top_stock?.ts_code || "--"}` }),
-    );
-    item.addEventListener("click", () => {
-      const match =
-        state.recommendations.find((stock) => stock.industry === row.industry) ||
-        state.rows.find((stock) => stock.industry === row.industry);
-      if (match) selectStock(match);
-    });
-    fragment.appendChild(item);
+    fragment.appendChild(industryButton(row));
   });
   els.industryList.appendChild(fragment);
 }
@@ -874,6 +934,37 @@ async function loadSelectedStock(tsCode) {
   await Promise.all([loadHistory(tsCode), loadAnalysis(tsCode), loadRecommendation(tsCode)]);
 }
 
+function validView(view) {
+  return Object.prototype.hasOwnProperty.call(VIEW_META, view) ? view : "overview";
+}
+
+function setView(view, { updateHash = true } = {}) {
+  const nextView = validView(view);
+  state.activeView = nextView;
+  const meta = VIEW_META[nextView];
+  setText("viewEyebrow", meta.eyebrow);
+  setText("viewTitle", meta.title);
+  document.querySelectorAll(".side-nav .nav-item[data-view]").forEach((item) => {
+    const isActive = item.dataset.view === nextView;
+    item.classList.toggle("active", isActive);
+    if (isActive && window.matchMedia("(max-width: 980px)").matches) {
+      item.scrollIntoView({ block: "nearest", inline: "center" });
+    }
+  });
+  document.querySelectorAll(".view[data-view-panel]").forEach((panel) => {
+    panel.classList.toggle("active", panel.dataset.viewPanel === nextView);
+  });
+  const content = document.querySelector(".content");
+  if (content) content.scrollTop = 0;
+  window.scrollTo(0, 0);
+  if (updateHash && window.location.hash !== `#${nextView}`) {
+    window.history.replaceState(null, "", `#${nextView}`);
+  }
+  if (nextView === "stock") {
+    window.requestAnimationFrame(renderKline);
+  }
+}
+
 function movingAverage(rows, index, span) {
   if (index + 1 < span) return null;
   const slice = rows.slice(index + 1 - span, index + 1);
@@ -994,6 +1085,7 @@ async function selectStock(row) {
   state.selected = row;
   renderSelected();
   renderCandidates();
+  setView("stock");
   await loadSelectedStock(row.ts_code);
 }
 
@@ -1065,6 +1157,7 @@ async function loadRecommendations(tradeDate) {
 
 async function loadIndustryTrends(tradeDate) {
   setText("industryInfo", "加载中");
+  renderOverviewIndustryTrends([]);
   try {
     const response = await fetch(`/api/industry-trends?trade_date=${tradeDate}&limit=16`);
     const payload = await response.json();
@@ -1074,6 +1167,7 @@ async function loadIndustryTrends(tradeDate) {
     renderIndustryTrends();
   } catch (error) {
     setText("industryInfo", error.message || "行业趋势加载失败");
+    renderOverviewIndustryTrends([]);
   }
 }
 
@@ -1415,62 +1509,26 @@ function updateBucketButtons() {
   });
 }
 
-function setActiveNav(targetId) {
-  document.querySelectorAll(".side-nav .nav-item[data-section]").forEach((item) => {
-    item.classList.toggle("active", item.dataset.section === targetId);
-  });
-}
-
-function scrollContentTo(targetId) {
-  const content = document.querySelector(".content");
-  const target = qs(targetId);
-  if (!content || !target) return;
-  const offset = window.matchMedia("(max-width: 980px)").matches ? 76 : 12;
-  const contentScrollable = content.scrollHeight > content.clientHeight + 4;
-  const contentTop = content.getBoundingClientRect().top;
-  const targetTop = target.getBoundingClientRect().top;
-  const scrollRoot = contentScrollable ? content : window;
-  const currentTop = contentScrollable ? content.scrollTop : window.scrollY;
-  scrollRoot.scrollTo({
-    top: currentTop + targetTop - (contentScrollable ? contentTop : 0) - offset,
-    behavior: "smooth",
-  });
-  setActiveNav(targetId);
-  if (window.location.hash !== `#${targetId}`) {
-    window.history.replaceState(null, "", `#${targetId}`);
-  }
-}
-
-function bindSectionNav() {
-  const navItems = Array.from(document.querySelectorAll(".side-nav .nav-item[data-section]"));
-  navItems.forEach((item) => {
+function bindViewNav() {
+  document.querySelectorAll(".side-nav .nav-item[data-view]").forEach((item) => {
     item.addEventListener("click", (event) => {
       event.preventDefault();
-      if (item.dataset.section) scrollContentTo(item.dataset.section);
+      setView(item.dataset.view);
     });
   });
-
-  const content = document.querySelector(".content");
-  if (!content || !navItems.length) return;
-  const sectionIds = navItems.map((item) => item.dataset.section).filter(Boolean);
-  const updateActiveFromScroll = () => {
-    let currentId = sectionIds[0];
-    const contentTop = content.getBoundingClientRect().top;
-    const contentScrollable = content.scrollHeight > content.clientHeight + 4;
-    sectionIds.forEach((id) => {
-      const section = qs(id);
-      if (!section) return;
-      const top = section.getBoundingClientRect().top - (contentScrollable ? contentTop : 0);
-      if (top <= 96) currentId = id;
-    });
-    setActiveNav(currentId);
-  };
-  content.addEventListener("scroll", updateActiveFromScroll);
-  window.addEventListener("scroll", updateActiveFromScroll);
+  document.querySelectorAll("[data-view-jump]").forEach((button) => {
+    button.addEventListener("click", () => setView(button.dataset.viewJump));
+  });
+  window.addEventListener("hashchange", () => {
+    const nextView = window.location.hash.replace("#", "");
+    if (nextView) setView(nextView, { updateHash: false });
+  });
 }
 
 function bind() {
   [
+    "viewEyebrow",
+    "viewTitle",
     "headerSubtitle",
     "tradeDate",
     "queryBtn",
@@ -1479,6 +1537,7 @@ function bind() {
     "backtestModalBtn",
     "toolDataBtn",
     "toolBacktestBtn",
+    "toolExportBtn",
     "statusBadge",
     "marketAnswer",
     "dataDateLabel",
@@ -1492,6 +1551,7 @@ function bind() {
     "avgMetric",
     "amountMetric",
     "candidateInfo",
+    "overviewCandidateList",
     "candidateList",
     "selectedCode",
     "selectedClose",
@@ -1535,6 +1595,7 @@ function bind() {
     "pbMetric",
     "analysisNotes",
     "industryInfo",
+    "overviewIndustryList",
     "industryList",
     "recommendTitle",
     "recommendReason",
@@ -1572,6 +1633,7 @@ function bind() {
   els.backtestModalBtn.addEventListener("click", openBacktestModal);
   if (els.toolDataBtn) els.toolDataBtn.addEventListener("click", openDataModal);
   if (els.toolBacktestBtn) els.toolBacktestBtn.addEventListener("click", openBacktestModal);
+  if (els.toolExportBtn) els.toolExportBtn.addEventListener("click", exportCsv);
   els.closeDataModalBtn.addEventListener("click", closeDataModal);
   els.closeBacktestModalBtn.addEventListener("click", closeBacktestModal);
   els.dataModal.addEventListener("click", (event) => {
@@ -1603,27 +1665,26 @@ function bind() {
       renderCandidates();
     });
   });
-  bindSectionNav();
+  bindViewNav();
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
   bind();
   iconRefresh();
+  const initialView = validView(window.location.hash.replace("#", ""));
+  setView(initialView, { updateHash: Boolean(window.location.hash) });
   if (!els.tradeDate.value) {
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
     els.tradeDate.value = yesterday.toISOString().slice(0, 10);
   }
   updateMarket();
   renderCandidates();
+  renderIndustryTrends();
   renderSelected();
   renderKline();
   setLoading(false);
   await loadStatus();
   await queryDaily();
-  const initialSection = window.location.hash.replace("#", "");
-  if (initialSection && qs(initialSection)) {
-    window.setTimeout(() => scrollContentTo(initialSection), 120);
-  }
 });
 
 window.addEventListener("resize", () => {
