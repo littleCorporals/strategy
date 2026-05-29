@@ -125,31 +125,49 @@
         </section>
 
         <section class="console-layout">
-          <section class="panel table-panel" id="candidates-section">
-            <header class="panel-head">
-              <div>
-                <span>Candidates</span>
-                <h3>候选列表</h3>
+          <section class="main-stack">
+            <section class="panel table-panel" id="candidates-section">
+              <header class="panel-head">
+                <div>
+                  <span>Candidates</span>
+                  <h3>候选列表</h3>
+                </div>
+                <p id="candidateInfo">等待行情</p>
+              </header>
+              <div class="segments" role="tablist" aria-label="候选分类">
+                <button class="active" data-bucket="priority" type="button">优先</button>
+                <button data-bucket="pullback" type="button">回踩</button>
+                <button data-bucket="active" type="button">活跃</button>
+                <button data-bucket="avoid" type="button">回避</button>
               </div>
-              <p id="candidateInfo">等待行情</p>
-            </header>
-            <div class="segments" role="tablist" aria-label="候选分类">
-              <button class="active" data-bucket="priority" type="button">优先</button>
-              <button data-bucket="pullback" type="button">回踩</button>
-              <button data-bucket="active" type="button">活跃</button>
-              <button data-bucket="avoid" type="button">回避</button>
-            </div>
-            <div class="candidate-table">
-              <div class="candidate-head" aria-hidden="true">
-                <span>股票</span>
-                <span>行业</span>
-                <span>涨跌幅</span>
-                <span>成交额</span>
-                <span>评分</span>
-                <span>判断</span>
+              <div class="candidate-table">
+                <div class="candidate-head" aria-hidden="true">
+                  <span>股票</span>
+                  <span>行业</span>
+                  <span>涨跌幅</span>
+                  <span>成交额</span>
+                  <span>评分</span>
+                  <span>判断</span>
+                </div>
+                <div class="candidate-list" id="candidateList" role="table" aria-label="候选股票"></div>
               </div>
-              <div class="candidate-list" id="candidateList" role="table" aria-label="候选股票"></div>
-            </div>
+            </section>
+
+            <section class="panel chart-panel" id="analysis-section">
+              <header class="panel-head">
+                <div>
+                  <span>Price</span>
+                  <h3>价格走势</h3>
+                </div>
+                <p id="historyInfo">选择股票后加载走势</p>
+              </header>
+              <div class="legend">
+                <span><b class="red"></b>上涨</span>
+                <span><b class="green"></b>下跌</span>
+                <span><b class="blue"></b>5日线</span>
+              </div>
+              <canvas id="klineChart" width="960" height="360" aria-label="价格走势"></canvas>
+            </section>
           </section>
 
           <aside class="detail-rail" id="stock-section">
@@ -206,46 +224,28 @@
                 </button>
               </div>
             </section>
+
+            <section class="panel recommendation-panel">
+              <header class="panel-head">
+                <div>
+                  <span>Decision</span>
+                  <h3 id="recommendTitle">等待推荐</h3>
+                </div>
+              </header>
+              <p id="recommendReason">消息源和行情确认后显示。</p>
+              <div class="signal-grid">
+                <div><span>明日倾向</span><strong id="forecastMetric">--</strong></div>
+                <div><span>趋势</span><strong id="trendMetric">--</strong></div>
+                <div><span>支撑</span><strong id="supportMetric">--</strong></div>
+                <div><span>压力</span><strong id="resistanceMetric">--</strong></div>
+              </div>
+              <div class="bar-list">
+                <label><span>趋势强度</span><b><i id="trendBar"></i></b></label>
+                <label><span>推荐信心</span><b><i id="confidenceBar"></i></b></label>
+              </div>
+              <p class="risk-line" id="riskWarning">等待消息核验。</p>
+            </section>
           </aside>
-        </section>
-
-        <section class="lower-layout">
-          <section class="panel chart-panel" id="analysis-section">
-            <header class="panel-head">
-              <div>
-                <span>Price</span>
-                <h3>价格走势</h3>
-              </div>
-              <p id="historyInfo">选择股票后加载走势</p>
-            </header>
-            <div class="legend">
-              <span><b class="red"></b>上涨</span>
-              <span><b class="green"></b>下跌</span>
-              <span><b class="blue"></b>5日线</span>
-            </div>
-            <canvas id="klineChart" width="960" height="360" aria-label="价格走势"></canvas>
-          </section>
-
-          <section class="panel recommendation-panel">
-            <header class="panel-head">
-              <div>
-                <span>Decision</span>
-                <h3 id="recommendTitle">等待推荐</h3>
-              </div>
-            </header>
-            <p id="recommendReason">消息源和行情确认后显示。</p>
-            <div class="signal-grid">
-              <div><span>明日倾向</span><strong id="forecastMetric">--</strong></div>
-              <div><span>趋势</span><strong id="trendMetric">--</strong></div>
-              <div><span>支撑</span><strong id="supportMetric">--</strong></div>
-              <div><span>压力</span><strong id="resistanceMetric">--</strong></div>
-            </div>
-            <div class="bar-list">
-              <label><span>趋势强度</span><b><i id="trendBar"></i></b></label>
-              <label><span>推荐信心</span><b><i id="confidenceBar"></i></b></label>
-            </div>
-            <p class="risk-line" id="riskWarning">等待消息核验。</p>
-          </section>
         </section>
 
         <section class="info-layout">

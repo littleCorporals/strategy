@@ -423,6 +423,7 @@ input {
   align-items: start;
 }
 
+.main-stack,
 .detail-rail {
   display: grid;
   gap: 12px;
@@ -630,14 +631,6 @@ input {
   grid-template-columns: 1fr;
   gap: 8px;
   padding: 12px 14px;
-}
-
-.lower-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  gap: 12px;
-  align-items: start;
-  margin-top: 12px;
 }
 
 .chart-panel {
@@ -930,13 +923,8 @@ tr.selected td {
 
 @media (max-width: 1320px) {
   .overview,
-  .console-layout,
-  .lower-layout {
+  .console-layout {
     grid-template-columns: 1fr;
-  }
-
-  .detail-rail {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .info-layout {
