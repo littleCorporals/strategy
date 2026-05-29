@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>模型管理台</title>
+    <link rel="stylesheet" href="/static/admin.css?v=20260528-ml-admin-5" />
+    <script src="/static/admin.js?v=20260528-ml-admin-5" defer></script>
+  </head>
+  <body>
+    <main class="admin-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">ML</div>
+          <div>
+            <h1>模型后台</h1>
+            <p>训练 · 上线 · 监控</p>
+          </div>
+        </div>
+
+        <nav class="side-nav" aria-label="模型后台菜单">
+          <button class="nav-item active" type="button" data-view="overview">
+            <span>工作台</span>
+            <small>下一步</small>
+          </button>
+          <button class="nav-item" type="button" data-view="training">
+            <span>训练任务</span>
+            <small>队列</small>
+          </button>
+          <button class="nav-item" type="button" data-view="models">
+            <span>模型版本</span>
+            <small>上下线</small>
+          </button>
+          <button class="nav-item" type="button" data-view="predict">
+            <span>预测验证</span>
+            <small>推理</small>
+          </button>
+          <button class="nav-item" type="button" data-view="monitor">
+            <span>效果监控</span>
+            <small>表现</small>
+          </button>
+          <button class="nav-item" type="button" data-view="audit">
+            <span>审计日志</span>
+            <small>记录</small>
+          </button>
+          <button class="nav-item" type="button" data-view="settings">
+            <span>基础配置</span>
+            <small>定义</small>
+          </button>
+        </nav>
+
+        <div class="side-footer">
+          <a class="back-link" href="/">返回看盘台</a>
+        </div>
+      </aside>
+
+      <section class="content">
+        <section class="view active" data-view-panel="overview">
+          <header class="page-head">
+            <div>
+              <span>Overview</span>
+              <h2>模型工作台</h2>
+              <p>按当前状态处理下一步，复杂明细放到左侧菜单里。</p>
+            </div>
+            <div class="page-actions">
+              <button id="refreshBtn" type="button">刷新</button>
+            </div>
+          </header>
+
+          <section class="coach">
+            <div>
+              <span>建议下一步</span>
+              <h3 id="coachTitle">正在检查模型状态</h3>
+              <p id="coachText">稍等一下，系统会根据当前数据告诉你下一步该做什么。</p>
+            </div>
+            <div class="coach-actions" id="coachActions"></div>
+          </section>
+
+          <section class="summary-grid">
+            <div class="summary-card">
+              <span>当前启用模型</span>
+              <strong id="activeModel">暂无</strong>
+            </div>
+            <div class="summary-card">
+              <span>模型版本</span>
+              <strong id="modelCount">0</strong>
+            </div>
+            <div class="summary-card">
+              <span>训练任务</span>
+              <strong id="runCount">0</strong>
+            </div>
+            <div class="summary-card">
+              <span>流程阶段</span>
+              <strong id="stageCount">0</strong>
+            </div>
+          </section>
+
+          <section class="steps" id="stepGuide">
+            <div class="step-card" data-step="train">
+              <b>1</b>
+              <strong>生成候选模型</strong>
+              <span>创建并执行训练任务。</span>
+            </div>
+            <div class="step-card" data-step="approve">
+              <b>2</b>
+              <strong>审核候选模型</strong>
+              <span>确认后点通过。</span>
+            </div>
+            <div class="step-card" data-step="activate">
+              <b>3</b>
+              <strong>上线启用模型</strong>
+              <span>通过后才允许上线。</span>
+            </div>
+            <div class="step-card" data-step="monitor">
+              <b>4</b>
+              <strong>预测并验证</strong>
+              <span>观察命中率和收益。</span>
+            </div>
+          </section>
+
+          <section class="page-card">
+            <div class="section-title">
+              <h3>常用操作</h3>
+              <p>新手可以只跟着这里处理。</p>
+            </div>
+            <div class="quick-actions">
+              <button id="queueTrainBtn" type="button">新建训练任务</button>
+              <button id="runQueuedBtn" type="button">执行待训练任务</button>
+              <button id="approveCandidateBtn" type="button">通过候选模型</button>
+              <button id="activateApprovedBtn" type="button">上线已通过模型</button>
+              <button id="rollbackModelBtn" type="button">回滚上一版</button>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="training">
+          <header class="page-head">
+            <div>
+              <span>Training</span>
+              <h2>训练任务</h2>
+              <p>创建、执行和查看训练队列。</p>
+            </div>
+            <div class="page-actions">
+              <button id="queueTrainBtnTraining" type="button">新建训练任务</button>
+            </div>
+          </header>
+
+          <section class="page-card">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>任务</th>
+                    <th>状态</th>
+                    <th>数据集</th>
+                    <th>特征</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="runsBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="models">
+          <header class="page-head">
+            <div>
+              <span>Models</span>
+              <h2>模型版本</h2>
+              <p>候选、审批、上线、下线和归档都在这里处理。</p>
+            </div>
+            <div class="page-actions">
+              <button id="rollbackModelBtnModels" type="button">回滚上一版</button>
+            </div>
+          </header>
+
+          <section class="page-card">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>模型</th>
+                    <th>状态</th>
+                    <th>特征</th>
+                    <th>标签</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="modelsBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="predict">
+          <header class="page-head">
+            <div>
+              <span>Prediction</span>
+              <h2>预测验证</h2>
+              <p>输入交易日，生成预测或验证已有预测。</p>
+            </div>
+          </header>
+
+          <section class="page-card form-card">
+            <label class="field">
+              <span>交易日</span>
+              <input id="pipelineDateInput" type="text" placeholder="YYYYMMDD" />
+            </label>
+            <div class="form-actions">
+              <button id="runPredictionBtn" type="button">生成预测</button>
+              <button id="runValidationBtn" type="button">验证预测</button>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="monitor">
+          <header class="page-head">
+            <div>
+              <span>Monitor</span>
+              <h2>效果监控</h2>
+              <p>按模型聚合预测数、验证数、命中率和平均收益。</p>
+            </div>
+          </header>
+
+          <section class="page-card">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>模型</th>
+                    <th>状态</th>
+                    <th>预测</th>
+                    <th>验证</th>
+                    <th>命中率</th>
+                    <th>平均收益</th>
+                  </tr>
+                </thead>
+                <tbody id="performanceBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="audit">
+          <header class="page-head">
+            <div>
+              <span>Audit</span>
+              <h2>审计日志</h2>
+              <p>记录模型注册、审批、上线、下线、归档和回滚。</p>
+            </div>
+          </header>
+
+          <section class="page-card">
+            <div class="event-list" id="eventList"></div>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="settings">
+          <header class="page-head">
+            <div>
+              <span>Settings</span>
+              <h2>基础配置</h2>
+              <p>查看当前流水线阶段、特征集和标签集定义。</p>
+            </div>
+          </header>
+
+          <section class="page-card">
+            <div class="definition-grid">
+              <div>
+                <h3>流程阶段</h3>
+                <div id="stageList"></div>
+              </div>
+              <div>
+                <h3>特征集</h3>
+                <div id="featureSets"></div>
+              </div>
+              <div>
+                <h3>标签集</h3>
+                <div id="labelSets"></div>
+              </div>
+            </div>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+  </body>
+</html>
