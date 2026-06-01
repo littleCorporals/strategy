@@ -32,10 +32,14 @@ async def run_training_pipeline(run_id: str) -> dict[str, Any]:
             start_date=run.get("train_start_date"),
             end_date=run.get("train_end_date"),
         )
-        samples = build_supervised_samples(rows, label_set=str(run.get("label_set") or "next_high_3pct_v1"))
+        samples = build_supervised_samples(
+            rows,
+            feature_set=str(run.get("feature_set") or "short_swing_v2"),
+            label_set=str(run.get("label_set") or "next_high_3pct_v1"),
+        )
         artifact, metrics = train_baseline_model(
             samples,
-            feature_set=str(run.get("feature_set") or "short_swing_v1"),
+            feature_set=str(run.get("feature_set") or "short_swing_v2"),
             label_set=str(run.get("label_set") or "next_high_3pct_v1"),
             params=run.get("params") or {},
         )
@@ -99,6 +103,41 @@ def _load_artifact(model: dict[str, Any]) -> dict[str, Any]:
     if not resolved_path.exists():
         raise ValueError("模型 artifact 不存在")
     return json.loads(resolved_path.read_text(encoding="utf-8"))
+
+
+def model_artifact_diagnostics(model: dict[str, Any]) -> dict[str, Any]:
+    artifact = _load_artifact(model)
+    weights = artifact.get("weights") or {}
+    weight_items = []
+    if isinstance(weights, dict):
+        for feature, value in weights.items():
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                number = 0.0
+            weight_items.append(
+                {
+                    "feature": str(feature),
+                    "weight": round(number, 8),
+                    "abs_weight": round(abs(number), 8),
+                }
+            )
+    weight_items.sort(key=lambda item: item["abs_weight"], reverse=True)
+    feature_columns = artifact.get("feature_columns") or []
+    return {
+        "model_type": artifact.get("model_type"),
+        "feature_set": artifact.get("feature_set"),
+        "label_set": artifact.get("label_set"),
+        "feature_count": len(feature_columns) if isinstance(feature_columns, list) else 0,
+        "feature_columns": feature_columns if isinstance(feature_columns, list) else [],
+        "non_zero_weight_count": sum(1 for item in weight_items if item["abs_weight"] > 0),
+        "top_weights": weight_items,
+        "training": artifact.get("training") or {},
+        "params": artifact.get("params") or {},
+        "threshold": artifact.get("threshold"),
+        "score_scale": artifact.get("score_scale"),
+        "created_at": artifact.get("created_at"),
+    }
 
 
 def _history_by_code(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
@@ -184,7 +223,7 @@ async def run_daily_prediction(trade_date: str, *, limit: int = 500) -> dict[str
         history = [item for item in by_code.get(ts_code, []) if str(item.get("trade_date") or "") <= end_date]
         if len(history) < 6:
             continue
-        features = build_feature_row(history)
+        features = build_feature_row(history, feature_set=str(model.get("feature_set") or "short_swing_v2"))
         prediction = predict_one(features, artifact)
         predictions.append(
             {

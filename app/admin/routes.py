@@ -107,7 +107,7 @@ async def workflow_state() -> dict[str, Any]:
 
 class TrainingRunRequest(BaseModel):
     dataset_version: str = Field(default="market_cache_v1", min_length=1)
-    feature_set: str = Field(default="short_swing_v1", min_length=1)
+    feature_set: str = Field(default="short_swing_v2", min_length=1)
     label_set: str = Field(default="next_high_3pct_v1", min_length=1)
     train_start_date: str | None = None
     train_end_date: str | None = None
@@ -119,7 +119,7 @@ class ModelRegisterRequest(BaseModel):
     model_id: str | None = None
     name: str = Field(default="短线预测候选模型", min_length=1)
     model_type: str = Field(default="supervised_time_series", min_length=1)
-    feature_set: str = Field(default="short_swing_v1", min_length=1)
+    feature_set: str = Field(default="short_swing_v2", min_length=1)
     label_set: str = Field(default="next_high_3pct_v1", min_length=1)
     artifact_path: str | None = None
     metrics: dict[str, Any] = Field(default_factory=dict)
@@ -283,6 +283,18 @@ async def performance(trade_date: Annotated[str | None, Query()] = None) -> dict
 @router.get("/api/admin/model-performance")
 async def model_performance() -> dict[str, Any]:
     return await model_repo.model_performance_overview()
+
+
+@router.get("/api/admin/model-diagnostics")
+async def model_diagnostics(model_id: Annotated[str | None, Query()] = None) -> dict[str, Any]:
+    model = await model_repo.get_model(model_id) if model_id else await model_repo.active_model()
+    if not model:
+        raise HTTPException(status_code=404, detail="模型不存在")
+    diagnostics = model_pipeline.model_artifact_diagnostics(model)
+    return {
+        "model": model,
+        "diagnostics": diagnostics,
+    }
 
 
 @router.post("/api/admin/validations/run")

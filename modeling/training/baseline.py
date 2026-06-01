@@ -4,7 +4,7 @@ import math
 from datetime import datetime
 from typing import Any
 
-from modeling.features.builder import FEATURE_COLUMNS
+from modeling.features.builder import feature_columns
 
 
 def _sigmoid(value: float) -> float:
@@ -23,12 +23,19 @@ def _std(values: list[float], mean: float) -> float:
     return math.sqrt(variance) or 1.0
 
 
+def _artifact_columns(artifact: dict[str, Any]) -> list[str]:
+    columns = artifact.get("feature_columns")
+    if isinstance(columns, list) and columns:
+        return [str(column) for column in columns]
+    return feature_columns(str(artifact.get("feature_set") or "short_swing_v1"))
+
+
 def score_features(features: dict[str, float], artifact: dict[str, Any]) -> float:
     score = float(artifact.get("intercept") or 0.0)
     weights = artifact.get("weights") or {}
     means = artifact.get("feature_means") or {}
     stds = artifact.get("feature_stds") or {}
-    for name in FEATURE_COLUMNS:
+    for name in _artifact_columns(artifact):
         value = float(features.get(name, 0.0))
         score += float(weights.get(name, 0.0)) * ((value - float(means.get(name, 0.0))) / float(stds.get(name, 1.0) or 1.0))
     return score
@@ -76,6 +83,26 @@ def _average_metric(samples: list[dict[str, Any]], key: str) -> float | None:
     return round(_mean(values), 4) if values else None
 
 
+def _log_loss(samples: list[dict[str, Any]], artifact: dict[str, Any]) -> float:
+    if not samples:
+        return 0.0
+    total = 0.0
+    for sample in samples:
+        label = float(sample.get("label") or 0.0)
+        _prediction, probability = _predict(sample.get("features") or {}, artifact)
+        probability = min(1 - 1e-8, max(1e-8, probability))
+        total += -(label * math.log(probability) + (1 - label) * math.log(1 - probability))
+    return round(total / len(samples), 6)
+
+
+def _normalized_features(sample: dict[str, Any], columns: list[str], means: dict[str, float], stds: dict[str, float]) -> list[float]:
+    features = sample.get("features") or {}
+    return [
+        (float(features.get(name, 0.0)) - float(means.get(name, 0.0))) / float(stds.get(name, 1.0) or 1.0)
+        for name in columns
+    ]
+
+
 def _topn_metrics(samples: list[dict[str, Any]], artifact: dict[str, Any], sizes: tuple[int, ...] = (20, 50, 100)) -> dict[str, Any]:
     if not samples:
         return {
@@ -120,6 +147,7 @@ def train_baseline_model(
         raise ValueError("训练样本为空，无法注册模型")
 
     params = params or {}
+    columns = feature_columns(feature_set)
     split_ratio = float(params.get("validation_ratio", 0.2))
     split_ratio = min(0.5, max(0.1, split_ratio))
     split_index = max(1, int(len(samples) * (1 - split_ratio)))
@@ -128,30 +156,102 @@ def train_baseline_model(
 
     feature_means: dict[str, float] = {}
     feature_stds: dict[str, float] = {}
-    weights: dict[str, float] = {}
-    for name in FEATURE_COLUMNS:
+    for name in columns:
         values = [float((sample.get("features") or {}).get(name, 0.0)) for sample in train_samples]
         mean = _mean(values)
         std = _std(values, mean)
-        positives = [float((sample.get("features") or {}).get(name, 0.0)) for sample in train_samples if sample.get("label")]
-        negatives = [float((sample.get("features") or {}).get(name, 0.0)) for sample in train_samples if not sample.get("label")]
         feature_means[name] = round(mean, 8)
         feature_stds[name] = round(std, 8)
-        weights[name] = round((_mean(positives) - _mean(negatives)) / std, 8) if positives and negatives else 0.0
 
     positive_rate = _mean([float(sample.get("label") or 0) for sample in train_samples])
+    weights_vector = [0.0 for _ in columns]
+    intercept = math.log((positive_rate + 0.001) / (1 - positive_rate + 0.001))
+    learning_rate = float(params.get("learning_rate", 0.06 if feature_set == "short_swing_v2" else 0.08))
+    l2 = float(params.get("l2", 0.001))
+    max_iter = int(params.get("max_iter", 450 if feature_set == "short_swing_v2" else 260))
+    patience = int(params.get("patience", 35))
+    train_matrix = [_normalized_features(sample, columns, feature_means, feature_stds) for sample in train_samples]
+    validation_matrix = [_normalized_features(sample, columns, feature_means, feature_stds) for sample in validation_samples]
+    train_labels = [float(sample.get("label") or 0.0) for sample in train_samples]
+    validation_labels = [float(sample.get("label") or 0.0) for sample in validation_samples]
+
+    best_loss = float("inf")
+    best_iteration = 0
+    best_weights = list(weights_vector)
+    best_intercept = intercept
+    rounds_without_improvement = 0
+    history: list[dict[str, float | int]] = []
+    for iteration in range(1, max_iter + 1):
+        grad_weights = [0.0 for _ in columns]
+        grad_intercept = 0.0
+        train_loss = 0.0
+        for values, label in zip(train_matrix, train_labels):
+            raw = intercept + sum(weight * value for weight, value in zip(weights_vector, values))
+            probability = _sigmoid(raw)
+            error = probability - label
+            probability = min(1 - 1e-8, max(1e-8, probability))
+            train_loss += -(label * math.log(probability) + (1 - label) * math.log(1 - probability))
+            grad_intercept += error
+            for index, value in enumerate(values):
+                grad_weights[index] += error * value
+        sample_count = max(1, len(train_matrix))
+        train_loss = train_loss / sample_count + l2 * sum(weight * weight for weight in weights_vector) / 2
+        for index, weight in enumerate(weights_vector):
+            grad = grad_weights[index] / sample_count + l2 * weight
+            weights_vector[index] -= learning_rate * grad
+        intercept -= learning_rate * grad_intercept / sample_count
+
+        validation_loss = 0.0
+        for values, label in zip(validation_matrix, validation_labels):
+            raw = intercept + sum(weight * value for weight, value in zip(weights_vector, values))
+            probability = min(1 - 1e-8, max(1e-8, _sigmoid(raw)))
+            validation_loss += -(label * math.log(probability) + (1 - label) * math.log(1 - probability))
+        validation_loss = validation_loss / max(1, len(validation_matrix))
+        if iteration == 1 or iteration % 25 == 0:
+            history.append(
+                {
+                    "iteration": iteration,
+                    "train_log_loss": round(train_loss, 6),
+                    "validation_log_loss": round(validation_loss, 6),
+                }
+            )
+        if validation_loss + 1e-6 < best_loss:
+            best_loss = validation_loss
+            best_iteration = iteration
+            best_weights = list(weights_vector)
+            best_intercept = intercept
+            rounds_without_improvement = 0
+        else:
+            rounds_without_improvement += 1
+        if rounds_without_improvement >= patience:
+            break
+
+    weights = {name: round(best_weights[index], 8) for index, name in enumerate(columns)}
     artifact = {
-        "model_type": "baseline_linear_ranker",
+        "model_type": "logistic_ranker_v1",
         "feature_set": feature_set,
         "label_set": label_set,
-        "feature_columns": FEATURE_COLUMNS,
+        "feature_columns": columns,
         "feature_means": feature_means,
         "feature_stds": feature_stds,
         "weights": weights,
-        "intercept": round(math.log((positive_rate + 0.001) / (1 - positive_rate + 0.001)), 8),
+        "intercept": round(best_intercept, 8),
         "threshold": 0.0,
         "score_scale": 1.0,
-        "params": params,
+        "params": {
+            **params,
+            "learning_rate": learning_rate,
+            "l2": l2,
+            "max_iter": max_iter,
+            "patience": patience,
+        },
+        "training": {
+            "algorithm": "batch_gradient_descent_logistic_regression",
+            "iterations": iteration,
+            "best_iteration": best_iteration,
+            "best_validation_log_loss": round(best_loss, 6),
+            "history": history[-20:],
+        },
         "created_at": datetime.now().isoformat(timespec="seconds"),
     }
 
@@ -163,6 +263,8 @@ def train_baseline_model(
 
     train_metrics = _classification_metrics(train_samples, artifact)
     validation_metrics = _classification_metrics(validation_samples, artifact)
+    train_metrics["log_loss"] = _log_loss(train_samples, artifact)
+    validation_metrics["log_loss"] = _log_loss(validation_samples, artifact)
     train_ranking = _topn_metrics(train_samples, artifact)
     validation_ranking = _topn_metrics(validation_samples, artifact)
     metrics = {

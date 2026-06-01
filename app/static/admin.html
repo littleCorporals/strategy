@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>模型管理台</title>
-    <link rel="stylesheet" href="/static/admin.css?v=20260601-ux-1" />
-    <script src="/static/admin.js?v=20260601-ux-1" defer></script>
+    <link rel="stylesheet" href="/static/admin.css?v=20260601-metrics-9" />
+    <script src="/static/admin.js?v=20260601-metrics-9" defer></script>
   </head>
   <body>
     <main class="admin-shell">
@@ -38,6 +38,10 @@
           <button class="nav-item" type="button" data-view="monitor">
             <span>效果监控</span>
             <small>表现</small>
+          </button>
+          <button class="nav-item" type="button" data-view="metrics">
+            <span>模型指标</span>
+            <small>诊断</small>
           </button>
           <button class="nav-item" type="button" data-view="audit">
             <span>审计日志</span>
@@ -272,6 +276,80 @@
                 <tbody id="performanceBody"></tbody>
               </table>
             </div>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="metrics">
+          <header class="page-head">
+            <div>
+              <span>Diagnostics</span>
+              <h2>模型指标</h2>
+              <p>单独查看当前模型的训练指标、排序指标、训练过程和特征权重。</p>
+            </div>
+            <div class="page-actions">
+              <button id="refreshBtnMetrics" type="button">刷新指标</button>
+            </div>
+          </header>
+
+          <section class="metrics-dashboard">
+            <section class="metric-hero">
+              <div class="metric-hero-main">
+                <span>当前激活模型</span>
+                <h3 id="diagnosticModelName">暂无模型</h3>
+                <p id="diagnosticModelMeta">暂无模型</p>
+                <div class="metric-health" id="diagnosticHealth"></div>
+              </div>
+              <div class="metric-kpis" id="diagnosticKpis"></div>
+            </section>
+
+            <section class="metric-workbench">
+              <div class="metric-main-stack">
+                <section class="page-card metric-panel metric-focus-panel">
+                  <div class="section-title">
+                    <h3>TopN 排序表现</h3>
+                    <p>看模型能不能把更容易命中的股票排到前面。</p>
+                  </div>
+                  <div class="chart-body" id="rankingChart"></div>
+                  <div class="ranking-summary" id="rankingMetricBody"></div>
+                </section>
+
+                <section class="page-card metric-panel">
+                  <div class="section-title">
+                    <h3>训练收敛曲线</h3>
+                    <p>验证集曲线越平稳，越不容易只是记住训练样本。</p>
+                  </div>
+                  <div class="chart-body chart-body-compact" id="lossChart"></div>
+                  <div class="metric-detail-list compact" id="trainingProcessBody"></div>
+                </section>
+              </div>
+
+              <aside class="metric-side-stack">
+                <section class="page-card metric-panel">
+                  <div class="section-title">
+                    <h3>训练质量</h3>
+                    <p>时间切分验证集，重点看 F1、Log Loss 和正例率。</p>
+                  </div>
+                  <div class="score-grid" id="trainingScoreGrid"></div>
+                  <div class="metric-detail-list" id="trainingMetricBody"></div>
+                </section>
+
+                <section class="page-card metric-panel">
+                  <div class="section-title">
+                    <h3>数据验证链路</h3>
+                    <p>训练指标之外，还要确认预测能被真实行情验证。</p>
+                  </div>
+                  <div class="verify-steps" id="dataVerifySteps"></div>
+                </section>
+              </aside>
+            </section>
+
+            <section class="page-card metric-panel metric-panel-wide">
+              <div class="section-title">
+                <h3>特征权重</h3>
+                <p>按绝对权重排序，正负方向分别展示。</p>
+              </div>
+              <div class="weight-chart" id="featureWeightList"></div>
+            </section>
           </section>
         </section>
 

@@ -350,9 +350,11 @@ def test_training_run_executes_pipeline_and_registers_candidate_model(
     assert payload["run"]["status"] == "completed"
     assert payload["run"]["sample_count"] > 0
     assert payload["model"]["status"] == "candidate"
+    assert payload["model"]["model_type"] == "logistic_ranker_v1"
     assert payload["model"]["artifact_path"]
     assert Path(payload["model"]["artifact_path"]).exists()
     assert Path(payload["model"]["artifact_path"]).is_relative_to(db_path.parent)
+    assert payload["run"]["metrics"]["validation"]["log_loss"] > 0
     assert payload["run"]["metrics"]["ranking"]["validation"]["top_n"]["20"]["count"] > 0
     assert "market_hit_rate" in payload["run"]["metrics"]["ranking"]["validation"]
     assert payload["pipeline"]["status"] == "completed"
@@ -385,6 +387,35 @@ def test_multi_day_label_builds_samples() -> None:
     assert three_day[0]["label_end_trade_date"] == "20240109"
     assert three_day[0]["label"] == 1
     assert three_day[0]["window_high_pct"] is not None
+
+
+def test_short_swing_v2_adds_enhanced_daily_features() -> None:
+    from modeling.datasets.supervised import build_supervised_samples
+    from modeling.features.builder import feature_columns
+
+    rows: list[dict[str, Any]] = []
+    for day in range(1, 30):
+        close = 10 + day * 0.12
+        rows.append(
+            {
+                "ts_code": "000001.SZ",
+                "trade_date": f"202401{day:02d}",
+                "open": close - 0.05,
+                "high": close * 1.02,
+                "low": close * 0.98,
+                "close": close,
+                "pre_close": close - 0.1,
+                "pct_chg": 1.0,
+                "vol": 1000 + day * 10,
+                "amount": 10000 + day * 100,
+            }
+        )
+
+    samples = build_supervised_samples(rows, feature_set="short_swing_v2", label_set="next_high_3pct_v1")
+
+    assert len(feature_columns("short_swing_v2")) > len(feature_columns("short_swing_v1"))
+    assert "momentum_20" in samples[0]["features"]
+    assert "upper_shadow_pct" in samples[0]["features"]
 
 
 def test_prediction_and_validation_pipeline(
@@ -460,6 +491,7 @@ def test_prediction_and_validation_pipeline(
     summaries = client.get("/api/admin/predictions", params={"trade_date": "20240109"}).json()["items"]
     performance = client.get("/api/admin/performance", params={"trade_date": "20240109"}).json()["items"]
     model_performance = client.get("/api/admin/model-performance").json()["items"]
+    diagnostics = client.get("/api/admin/model-diagnostics", params={"model_id": model_id}).json()
     assert summaries[0]["count"] == 3
     assert performance[0]["count"] == 3
     assert model_performance[0]["model_id"] == model_id
@@ -467,6 +499,10 @@ def test_prediction_and_validation_pipeline(
     assert model_performance[0]["validation_count"] == 3
     assert model_performance[0]["hit_rate"] is not None
     assert model_performance[0]["ranking"]["top_n"]["20"]["count"] == 3
+    assert diagnostics["model"]["model_id"] == model_id
+    assert diagnostics["diagnostics"]["feature_count"] > 0
+    assert diagnostics["diagnostics"]["training"]["iterations"] > 0
+    assert diagnostics["diagnostics"]["top_weights"]
 
 
 def test_admin_prediction_and_validation_can_use_workflow_defaults(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from modeling.features.builder import FEATURE_COLUMNS, build_feature_row, number
+from modeling.features.builder import build_feature_row, feature_columns, number
 from modeling.labels.builder import build_label, label_horizon
 
 
@@ -16,9 +16,11 @@ def build_supervised_samples(
     rows: list[dict[str, Any]],
     *,
     label_set: str,
+    feature_set: str = "short_swing_v1",
     min_history: int = 6,
 ) -> list[dict[str, Any]]:
     horizon = label_horizon(label_set)
+    columns = feature_columns(feature_set)
     by_code: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
         ts_code = str(row.get("ts_code") or "")
@@ -34,7 +36,7 @@ def build_supervised_samples(
             row = items[index]
             future_rows = items[index + 1 : index + 1 + horizon]
             next_row = future_rows[0]
-            features = build_feature_row(history)
+            features = build_feature_row(history, feature_set=feature_set)
             close = number(row, "close")
             next_close_pct = _pct_change(close, number(next_row, "close"))
             next_high_pct = _pct_change(close, number(next_row, "high"))
@@ -46,7 +48,7 @@ def build_supervised_samples(
                     "trade_date": str(row.get("trade_date") or ""),
                     "next_trade_date": str(next_row.get("trade_date") or ""),
                     "label_end_trade_date": str(future_rows[-1].get("trade_date") or ""),
-                    "features": {name: float(features.get(name, 0.0)) for name in FEATURE_COLUMNS},
+                    "features": {name: float(features.get(name, 0.0)) for name in columns},
                     "label": build_label(row, next_row, label_set, future_rows=future_rows),
                     "next_close_pct": round(next_close_pct, 4) if next_close_pct is not None else None,
                     "next_high_pct": round(next_high_pct, 4) if next_high_pct is not None else None,

@@ -1,5 +1,6 @@
 const state = {
   overview: null,
+  diagnostics: null,
   loading: false,
 };
 
@@ -191,7 +192,7 @@ function renderSelectOptions(id, items, fallback) {
 }
 
 function renderTrainingOptions(payload) {
-  renderSelectOptions("featureSetInput", payload.feature_sets || [], "short_swing_v1");
+  renderSelectOptions("featureSetInput", payload.feature_sets || [], "short_swing_v2");
   renderSelectOptions("labelSetInput", payload.label_sets || [], "next_high_3pct_v1");
 }
 
@@ -276,6 +277,7 @@ function renderOverview(payload) {
   renderDefinitions("labelSets", payload.label_sets || []);
   renderTrainingOptions(payload);
   renderWorkflow(payload);
+  renderDiagnostics(payload);
   renderCoach(payload);
 }
 
@@ -377,8 +379,267 @@ function signedPct(value) {
   return `${sign}${Math.round(number * 100) / 100}%`;
 }
 
+function decimal(value, digits = 4) {
+  if (value === null || value === undefined || value === "") {
+    return "-";
+  }
+  const number = Number(value);
+  return Number.isFinite(number) ? number.toFixed(digits) : "-";
+}
+
+function numberValue(value) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function boundedPct(value) {
+  const number = numberValue(value);
+  if (number === null) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, number * 100));
+}
+
 function topMetric(item, size = "50") {
   return item.ranking?.top_n?.[size] || null;
+}
+
+function metricRow(label, value) {
+  return `
+    <div class="metric-detail-item">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `;
+}
+
+function kpi(label, value) {
+  return `
+    <div class="metric-kpi">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `;
+}
+
+function metricPill(label, value, tone = "neutral") {
+  return `
+    <span class="metric-pill ${escapeHtml(tone)}">
+      <b>${escapeHtml(label)}</b>
+      ${escapeHtml(value)}
+    </span>
+  `;
+}
+
+function scoreCard(label, value, hint, tone = "neutral") {
+  return `
+    <div class="score-card ${escapeHtml(tone)}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      <small>${escapeHtml(hint)}</small>
+    </div>
+  `;
+}
+
+function renderRankingChart(topN, marketHitRate) {
+  const rows = ["20", "50", "100"]
+    .map((size) => ({ size, item: topN?.[size] || null }))
+    .filter((row) => row.item);
+  if (!rows.length) {
+    return `<div class="empty">暂无 TopN 排序指标</div>`;
+  }
+  const market = boundedPct(marketHitRate);
+  return `
+    <div class="ranking-chart">
+      <div class="chart-legend">
+        <span><i class="legend-fill"></i>TopN 命中率</span>
+        <span><i class="legend-line"></i>全市场基准 ${escapeHtml(percent(marketHitRate))}</span>
+      </div>
+      <div class="ranking-axis">
+        <span>0%</span>
+        <span>50%</span>
+        <span>100%</span>
+      </div>
+      ${rows
+        .map(({ size, item }) => {
+          const hitRate = boundedPct(item.hit_rate);
+          const lift = numberValue(item.lift);
+          const liftTone = lift === null ? "neutral" : lift >= 0 ? "positive" : "negative";
+          return `
+            <div class="ranking-row">
+              <div class="ranking-label">
+                <strong>Top${escapeHtml(size)}</strong>
+                <span>${escapeHtml(text(item.count, size))} 只</span>
+              </div>
+              <div class="ranking-bar" style="--value: ${hitRate}; --market: ${market};">
+                <span class="ranking-bar-fill"></span>
+                <span class="ranking-market"></span>
+              </div>
+              <div class="ranking-value">
+                <strong>${escapeHtml(percent(item.hit_rate))}</strong>
+                <span class="${liftTone}">${escapeHtml(signedPct(lift !== null ? lift * 100 : null))}</span>
+              </div>
+            </div>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderRankingSummary(topN) {
+  const rows = ["20", "50", "100"]
+    .map((size) => ({ size, item: topN?.[size] || null }))
+    .filter((row) => row.item);
+  if (!rows.length) {
+    return `<div class="empty">暂无排序摘要</div>`;
+  }
+  return rows
+    .map(({ size, item }) => {
+      const lift = numberValue(item.lift);
+      const tone = lift === null ? "neutral" : lift >= 0 ? "positive" : "negative";
+      return `
+        <div class="ranking-summary-item">
+          <span>Top${escapeHtml(size)}</span>
+          <strong>${escapeHtml(percent(item.hit_rate))}</strong>
+          <small class="${tone}">提升 ${escapeHtml(signedPct(lift !== null ? lift * 100 : null))}</small>
+          <b>${escapeHtml(signedPct(item.avg_window_high_pct ?? item.avg_next_high_pct))}</b>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function chartPoint(index, length, value, minValue, maxValue) {
+  const width = 560;
+  const height = 150;
+  const padX = 38;
+  const padY = 18;
+  const usableW = width - padX * 2;
+  const usableH = height - padY * 2;
+  const x = length <= 1 ? width / 2 : padX + (index / (length - 1)) * usableW;
+  const y = padY + ((maxValue - value) / (maxValue - minValue || 1)) * usableH;
+  return [Number(x.toFixed(2)), Number(y.toFixed(2))];
+}
+
+function renderLossChart(history) {
+  const rows = Array.isArray(history) ? history.filter((row) => row && row.iteration !== undefined) : [];
+  if (!rows.length) {
+    return `<div class="empty">暂无训练过程曲线</div>`;
+  }
+  const values = rows
+    .flatMap((row) => [numberValue(row.train_log_loss), numberValue(row.validation_log_loss)])
+    .filter((value) => value !== null);
+  if (!values.length) {
+    return `<div class="empty">暂无训练过程曲线</div>`;
+  }
+  let minValue = Math.min(...values);
+  let maxValue = Math.max(...values);
+  if (minValue === maxValue) {
+    minValue -= 0.01;
+    maxValue += 0.01;
+  } else {
+    const padding = (maxValue - minValue) * 0.12;
+    minValue -= padding;
+    maxValue += padding;
+  }
+  const trainPoints = rows
+    .map((row, index) => chartPoint(index, rows.length, numberValue(row.train_log_loss), minValue, maxValue).join(","))
+    .join(" ");
+  const validationPoints = rows
+    .map((row, index) => chartPoint(index, rows.length, numberValue(row.validation_log_loss), minValue, maxValue).join(","))
+    .join(" ");
+  const firstIteration = rows[0]?.iteration;
+  const lastIteration = rows[rows.length - 1]?.iteration;
+  const lastTrain = rows[rows.length - 1]?.train_log_loss;
+  const lastValidation = rows[rows.length - 1]?.validation_log_loss;
+  return `
+    <div class="loss-chart">
+      <svg viewBox="0 0 560 150" role="img" aria-label="训练和验证 Log Loss 曲线">
+        <line class="chart-grid-line" x1="38" y1="18" x2="38" y2="132"></line>
+        <line class="chart-grid-line" x1="38" y1="132" x2="522" y2="132"></line>
+        <line class="chart-guide" x1="38" y1="75" x2="522" y2="75"></line>
+        <polyline class="loss-line train" points="${escapeHtml(trainPoints)}"></polyline>
+        <polyline class="loss-line validation" points="${escapeHtml(validationPoints)}"></polyline>
+      </svg>
+      <div class="loss-meta">
+        <span>迭代 ${escapeHtml(text(firstIteration))} - ${escapeHtml(text(lastIteration))}</span>
+        <span>训练 ${escapeHtml(decimal(lastTrain, 6))}</span>
+        <span>验证 ${escapeHtml(decimal(lastValidation, 6))}</span>
+      </div>
+      <div class="chart-legend">
+        <span><i class="legend-train"></i>训练 Log Loss</span>
+        <span><i class="legend-validation"></i>验证 Log Loss</span>
+      </div>
+    </div>
+  `;
+}
+
+function renderWeightChart(weights) {
+  const rows = Array.isArray(weights) ? weights.slice(0, 18) : [];
+  if (!rows.length) {
+    return `<div class="empty">暂无特征权重</div>`;
+  }
+  const maxAbs = Math.max(...rows.map((item) => Math.abs(numberValue(item.weight) || 0)), 0.000001);
+  return rows
+    .map((item, index) => {
+      const weight = numberValue(item.weight) || 0;
+      const width = Math.max(3, Math.min(100, (Math.abs(weight) / maxAbs) * 100));
+      const tone = weight >= 0 ? "positive" : "negative";
+      return `
+        <div class="weight-row ${tone}" title="${escapeHtml(item.feature)}">
+          <div class="weight-rank">${index + 1}</div>
+          <div class="weight-name">${escapeHtml(item.feature)}</div>
+          <div class="weight-bar-track" style="--weight: ${width};">
+            <span class="weight-bar-fill"></span>
+          </div>
+          <div class="weight-value">${escapeHtml(decimal(weight, 5))}</div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderValidationFlow(workflow, liveTop50) {
+  const steps = [
+    {
+      state: workflow.latest_prediction_date ? "done" : workflow.suggested_prediction_date ? "ready" : "wait",
+      title: "生成预测",
+      value: workflow.latest_prediction_date || workflow.suggested_prediction_date || "暂无行情",
+      detail: "写入 ml_predictions，作为后续验证样本。",
+    },
+    {
+      state: workflow.validation_next_trade_date ? "done" : "wait",
+      title: "等待真实行情",
+      value: workflow.validation_next_trade_date || "等待下一交易日",
+      detail: `最近预测日：${workflow.latest_prediction_date || "暂无"}`,
+    },
+    {
+      state: workflow.validation_ready ? "ready" : liveTop50 ? "done" : "wait",
+      title: "验证结果",
+      value: liveTop50 ? `Top50 ${percent(liveTop50.hit_rate)}` : workflow.validation_ready ? "可验证" : "未完成",
+      detail: workflow.validation_reason || "验证会写入 ml_validation_results。",
+    },
+  ];
+  return `
+    <div class="verify-flow">
+      ${steps
+        .map(
+          (step, index) => `
+            <div class="verify-node ${escapeHtml(step.state)}">
+              <span>${index + 1}</span>
+              <strong>${escapeHtml(step.title)}</strong>
+              <b>${escapeHtml(step.value)}</b>
+              <p>${escapeHtml(step.detail)}</p>
+            </div>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
 }
 
 function renderPerformance(items) {
@@ -404,6 +665,119 @@ function renderPerformance(items) {
       `;
     })
     .join("");
+}
+
+function activePerformance(payload) {
+  const activeId = payload.active_model?.model_id;
+  return (payload.model_performance || []).find((item) => item.model_id === activeId) || null;
+}
+
+function renderDiagnostics(payload) {
+  const model = payload.active_model || {};
+  const metrics = model.metrics || {};
+  const diagnostics = state.diagnostics?.diagnostics || {};
+  const performance = activePerformance(payload);
+  const top50 = metrics.ranking?.validation?.top_n?.["50"];
+  const liveTop50 = performance?.ranking?.top_n?.["50"];
+  const validation = metrics.validation || {};
+  const topN = metrics.ranking?.validation?.top_n || {};
+  const marketHitRate = metrics.ranking?.validation?.market_hit_rate;
+  const training = diagnostics.training || {};
+
+  const modelName = $("diagnosticModelName");
+  if (modelName) {
+    modelName.textContent = model.model_id ? model.name || model.model_id : "暂无模型";
+  }
+
+  const meta = $("diagnosticModelMeta");
+  if (meta) {
+    meta.textContent = model.model_id
+      ? `${model.model_type || diagnostics.model_type || "-"} · ${model.feature_set || "-"} · ${model.label_set || "-"}`
+      : "暂无模型";
+  }
+
+  const health = $("diagnosticHealth");
+  if (health) {
+    const lift = numberValue(top50?.lift);
+    health.innerHTML = model.model_id
+      ? [
+          metricPill("模型", badge(model.status).replace(/<[^>]+>/g, ""), model.status === "active" ? "positive" : "neutral"),
+          metricPill("样本", text(metrics.sample_count), "neutral"),
+          metricPill("Top50 提升", signedPct(lift !== null ? lift * 100 : null), lift !== null && lift >= 0 ? "positive" : "negative"),
+          metricPill("验证基准", percent(marketHitRate), "neutral"),
+        ].join("")
+      : "";
+  }
+
+  const kpis = $("diagnosticKpis");
+  if (kpis) {
+    kpis.innerHTML = model.model_id
+      ? [
+          kpi("训练样本", text(metrics.sample_count)),
+          kpi("特征数", text(diagnostics.feature_count)),
+          kpi("验证 F1", percent(validation.f1 ?? metrics.f1)),
+          kpi("Top50", percent(top50?.hit_rate)),
+        ].join("")
+      : `<div class="empty">暂无激活模型</div>`;
+  }
+
+  const rankingChart = $("rankingChart");
+  if (rankingChart) {
+    rankingChart.innerHTML = model.model_id ? renderRankingChart(topN, marketHitRate) : `<div class="empty">暂无激活模型</div>`;
+  }
+
+  const lossChart = $("lossChart");
+  if (lossChart) {
+    lossChart.innerHTML = renderLossChart(training.history || []);
+  }
+
+  const trainingScoreGrid = $("trainingScoreGrid");
+  if (trainingScoreGrid) {
+    trainingScoreGrid.innerHTML = model.model_id
+      ? [
+          scoreCard("Accuracy", percent(validation.accuracy), "验证集整体判断", "neutral"),
+          scoreCard("Precision", percent(validation.precision), "预测为正时命中率", "neutral"),
+          scoreCard("Recall", percent(validation.recall), "正例覆盖能力", "neutral"),
+          scoreCard("F1", percent(validation.f1 ?? metrics.f1), "精确率与召回率平衡", "positive"),
+        ].join("")
+      : `<div class="empty">暂无训练指标</div>`;
+  }
+
+  const trainingBody = $("trainingMetricBody");
+  if (trainingBody) {
+    trainingBody.innerHTML = [
+      metricRow("Log Loss", decimal(validation.log_loss, 6)),
+      metricRow("验证样本", text(metrics.validation_sample_count)),
+      metricRow("正例率", percent(validation.positive_rate)),
+    ].join("");
+  }
+
+  const rankingBody = $("rankingMetricBody");
+  if (rankingBody) {
+    rankingBody.innerHTML = renderRankingSummary(topN);
+  }
+
+  const processBody = $("trainingProcessBody");
+  if (processBody) {
+    processBody.innerHTML = [
+      metricRow("训练轮次", text(training.iterations)),
+      metricRow("最佳轮次", text(training.best_iteration)),
+      metricRow("最佳验证 Log Loss", decimal(training.best_validation_log_loss, 6)),
+      metricRow("非零权重", text(diagnostics.non_zero_weight_count)),
+    ].join("");
+  }
+
+  const weightList = $("featureWeightList");
+  if (weightList) {
+    const weights = diagnostics.top_weights || [];
+    weightList.innerHTML = renderWeightChart(weights);
+  }
+
+  const verifySteps = $("dataVerifySteps");
+  if (verifySteps) {
+    const workflow = payload.workflow || {};
+    verifySteps.innerHTML = renderValidationFlow(workflow, liveTop50);
+  }
 }
 
 function renderEvents(events) {
@@ -439,6 +813,7 @@ async function loadOverview({ silent = false } = {}) {
       throw new Error(`加载失败：${res.status}`);
     }
     state.overview = await res.json();
+    await loadDiagnostics({ silent: true });
     renderOverview(state.overview);
     if (!silent) {
       showToast("已刷新");
@@ -451,13 +826,32 @@ async function loadOverview({ silent = false } = {}) {
   }
 }
 
+async function loadDiagnostics({ silent = false } = {}) {
+  if (!state.overview?.active_model) {
+    state.diagnostics = null;
+    return;
+  }
+  try {
+    const res = await fetch(`/api/admin/model-diagnostics?model_id=${encodeURIComponent(state.overview.active_model.model_id)}`);
+    if (!res.ok) {
+      throw new Error(`诊断加载失败：${res.status}`);
+    }
+    state.diagnostics = await res.json();
+  } catch (error) {
+    state.diagnostics = null;
+    if (!silent) {
+      showToast(error.message || "诊断加载失败");
+    }
+  }
+}
+
 async function createTrainingRun() {
   const res = await fetch("/api/admin/training-runs", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({
       dataset_version: "market_cache_v1",
-      feature_set: $("featureSetInput")?.value || "short_swing_v1",
+      feature_set: $("featureSetInput")?.value || "short_swing_v2",
       label_set: $("labelSetInput")?.value || "next_high_3pct_v1",
       notes: "manual queued from admin",
     }),
@@ -714,6 +1108,7 @@ window.addEventListener("DOMContentLoaded", () => {
     setView(initialView);
   }
   bindOptional("refreshBtn", "click", () => loadOverview());
+  bindOptional("refreshBtnMetrics", "click", () => loadOverview());
   bindOptional("rollbackModelBtn", "click", rollbackModel);
   bindOptional("rollbackModelBtnModels", "click", rollbackModel);
   bindOptional("queueTrainBtn", "click", queueTrainingRun);
