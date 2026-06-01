@@ -650,6 +650,35 @@ async def prediction_summary(trade_date: str | None = None) -> dict[str, Any]:
     return {"items": [dict(row) for row in rows]}
 
 
+async def latest_prediction_trade_date(model_id: str | None = None) -> str | None:
+    await ensure()
+    dates = await recent_prediction_trade_dates(model_id=model_id, limit=1)
+    return dates[0] if dates else None
+
+
+async def recent_prediction_trade_dates(model_id: str | None = None, limit: int = 30) -> list[str]:
+    await ensure()
+    params: list[Any] = []
+    where = ""
+    if model_id:
+        where = "WHERE model_id = ?"
+        params.append(model_id)
+    params.append(limit)
+    with connect() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT trade_date
+            FROM ml_predictions
+            {where}
+            GROUP BY trade_date
+            ORDER BY trade_date DESC
+            LIMIT ?
+            """,
+            params,
+        ).fetchall()
+    return [str(row["trade_date"]) for row in rows if row["trade_date"]]
+
+
 async def validation_summary(trade_date: str | None = None) -> dict[str, Any]:
     await ensure()
     params: list[Any] = []
@@ -702,10 +731,27 @@ async def model_performance_overview() -> dict[str, Any]:
             ORDER BY m.status = 'active' DESC, latest_validation_date DESC, m.created_at DESC
             """
         ).fetchall()
+        ranking_rows = conn.execute(
+            """
+            SELECT p1.payload_json
+            FROM ml_pipeline_runs p1
+            WHERE p1.pipeline_type = 'validation'
+              AND p1.status = 'completed'
+            ORDER BY p1.trade_date DESC, p1.created_at DESC
+            """
+        ).fetchall()
+    latest_rankings: dict[str, dict[str, Any]] = {}
+    for row in ranking_rows:
+        payload = json.loads(row["payload_json"] or "{}")
+        model_id = str(payload.get("model_id") or "")
+        ranking = payload.get("ranking")
+        if model_id and isinstance(ranking, dict) and model_id not in latest_rankings:
+            latest_rankings[model_id] = ranking
     items: list[dict[str, Any]] = []
     for row in rows:
         item = dict(row)
         for key in ("hit_rate", "avg_next_close_pct", "avg_next_high_pct"):
             item[key] = round(float(item[key]), 4) if item[key] is not None else None
+        item["ranking"] = latest_rankings.get(str(item["model_id"]))
         items.append(item)
     return {"items": items}

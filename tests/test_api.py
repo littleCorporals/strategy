@@ -142,6 +142,9 @@ def test_admin_overview_has_model_management_sections(isolated_app: tuple[TestCl
     assert "pipelines" in payload
     assert "feature_sets" in payload
     assert "label_sets" in payload
+    assert "workflow" in payload
+    assert "suggested_prediction_date" in payload["workflow"]
+    assert "suggested_validation_date" in payload["workflow"]
 
 
 def test_training_run_can_be_queued(isolated_app: tuple[TestClient, Path]) -> None:
@@ -350,7 +353,38 @@ def test_training_run_executes_pipeline_and_registers_candidate_model(
     assert payload["model"]["artifact_path"]
     assert Path(payload["model"]["artifact_path"]).exists()
     assert Path(payload["model"]["artifact_path"]).is_relative_to(db_path.parent)
+    assert payload["run"]["metrics"]["ranking"]["validation"]["top_n"]["20"]["count"] > 0
+    assert "market_hit_rate" in payload["run"]["metrics"]["ranking"]["validation"]
     assert payload["pipeline"]["status"] == "completed"
+
+
+def test_multi_day_label_builds_samples() -> None:
+    from modeling.datasets.supervised import build_supervised_samples
+
+    rows: list[dict[str, Any]] = []
+    for day in range(1, 10):
+        close = 10 + day * 0.1
+        rows.append(
+            {
+                "ts_code": "000001.SZ",
+                "trade_date": f"202401{day:02d}",
+                "open": close,
+                "high": close * (1.01 if day < 8 else 1.04),
+                "low": close * 0.99,
+                "close": close,
+                "pct_chg": 1.0,
+                "vol": 1000 + day,
+                "amount": 10000 + day,
+            }
+        )
+
+    one_day = build_supervised_samples(rows, label_set="next_high_3pct_v1")
+    three_day = build_supervised_samples(rows, label_set="next_3d_high_3pct_v1")
+
+    assert len(three_day) < len(one_day)
+    assert three_day[0]["label_end_trade_date"] == "20240109"
+    assert three_day[0]["label"] == 1
+    assert three_day[0]["window_high_pct"] is not None
 
 
 def test_prediction_and_validation_pipeline(
@@ -419,6 +453,9 @@ def test_prediction_and_validation_pipeline(
     assert validation_payload["trade_date"] == "20240109"
     assert validation_payload["next_trade_date"] == "20240110"
     assert validation_payload["count"] == 3
+    assert validation_payload["ranking"]["market_count"] == 3
+    assert validation_payload["ranking"]["top_n"]["20"]["count"] == 3
+    assert "lift" in validation_payload["ranking"]["top_n"]["20"]
 
     summaries = client.get("/api/admin/predictions", params={"trade_date": "20240109"}).json()["items"]
     performance = client.get("/api/admin/performance", params={"trade_date": "20240109"}).json()["items"]
@@ -429,6 +466,73 @@ def test_prediction_and_validation_pipeline(
     assert model_performance[0]["prediction_count"] == 3
     assert model_performance[0]["validation_count"] == 3
     assert model_performance[0]["hit_rate"] is not None
+    assert model_performance[0]["ranking"]["top_n"]["20"]["count"] == 3
+
+
+def test_admin_prediction_and_validation_can_use_workflow_defaults(
+    isolated_app: tuple[TestClient, Path],
+) -> None:
+    client, _db_path = isolated_app
+
+    from app.db import cache as db_cache
+
+    rows: list[dict[str, Any]] = []
+    for code_index, ts_code in enumerate(["000001.SZ", "000002.SZ", "000003.SZ"]):
+        base = 10 + code_index
+        for day in range(1, 11):
+            close = base + day * (0.1 + code_index * 0.05)
+            rows.append(
+                {
+                    "ts_code": ts_code,
+                    "trade_date": f"202401{day:02d}",
+                    "open": round(close - 0.08, 3),
+                    "high": round(close * 1.03, 3),
+                    "low": round(close * 0.985, 3),
+                    "close": round(close, 3),
+                    "pre_close": round(close - 0.1, 3),
+                    "change": 0.1,
+                    "pct_chg": round(1 + day * 0.08, 3),
+                    "vol": 1000 + day * 30,
+                    "amount": 10000 + day * 450,
+                }
+            )
+    db_cache.init_sync()
+    db_cache.save_rows_sync("daily", rows, complete=False)
+    for day in range(1, 11):
+        db_cache.mark_complete_sync("daily", f"202401{day:02d}", 3, "test")
+
+    queued = client.post(
+        "/api/admin/training-runs",
+        json={
+            "dataset_version": "market_cache_v1",
+            "feature_set": "short_swing_v1",
+            "label_set": "next_high_3pct_v1",
+            "train_end_date": "20240108",
+        },
+    ).json()["item"]
+    trained = client.post(f"/api/admin/training-runs/{queued['run_id']}/run").json()
+    model_id = trained["model"]["model_id"]
+    assert client.post(f"/api/admin/models/{model_id}/approve", json={}).status_code == 200
+    assert client.post(f"/api/admin/models/{model_id}/activate").status_code == 200
+
+    earlier_prediction = client.post(
+        "/api/admin/predictions/run",
+        json={"trade_date": "20240109", "limit": 10},
+    )
+    prediction = client.post("/api/admin/predictions/run", json={"limit": 10})
+    overview_after_prediction = client.get("/api/admin/overview").json()
+    validation = client.post("/api/admin/validations/run", json={})
+
+    assert earlier_prediction.status_code == 200
+    assert earlier_prediction.json()["trade_date"] == "20240109"
+    assert prediction.status_code == 200
+    assert prediction.json()["trade_date"] == "20240110"
+    assert overview_after_prediction["workflow"]["suggested_prediction_date"] == "20240110"
+    assert overview_after_prediction["workflow"]["suggested_validation_date"] == "20240109"
+    assert overview_after_prediction["workflow"]["validation_ready"] is True
+    assert validation.status_code == 200
+    assert validation.json()["trade_date"] == "20240109"
+    assert validation.json()["next_trade_date"] == "20240110"
 
 
 def test_stock_analysis_reports_actual_trade_date(

@@ -174,6 +174,88 @@ function renderDefinitions(id, items) {
     .join("");
 }
 
+function renderSelectOptions(id, items, fallback) {
+  const select = $(id);
+  if (!select) {
+    return;
+  }
+  const current = select.value || fallback;
+  select.innerHTML = (items || [])
+    .map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name || item.id)}</option>`)
+    .join("");
+  if ([...select.options].some((option) => option.value === current)) {
+    select.value = current;
+  } else if (fallback) {
+    select.value = fallback;
+  }
+}
+
+function renderTrainingOptions(payload) {
+  renderSelectOptions("featureSetInput", payload.feature_sets || [], "short_swing_v1");
+  renderSelectOptions("labelSetInput", payload.label_sets || [], "next_high_3pct_v1");
+}
+
+function syncSuggestedInput(id, value) {
+  const input = $(id);
+  if (!input) {
+    return;
+  }
+  input.placeholder = value ? `自动：${value}` : "暂无推荐日期";
+  if (input.dataset.autofilled === "true" && value) {
+    input.value = value;
+  }
+}
+
+function renderWorkflowSummary(workflow) {
+  const container = $("workflowSummary");
+  if (!container) {
+    return;
+  }
+  container.innerHTML = `
+    <div class="workflow-item">
+      <span>预测使用</span>
+      <strong>${escapeHtml(workflow.suggested_prediction_date || "暂无行情")}</strong>
+    </div>
+    <div class="workflow-item">
+      <span>验证预测日</span>
+      <strong>${escapeHtml(workflow.suggested_validation_date || "暂无预测")}</strong>
+    </div>
+    <div class="workflow-item">
+      <span>验证对比日</span>
+      <strong>${escapeHtml(workflow.validation_next_trade_date || "等待行情")}</strong>
+    </div>
+  `;
+}
+
+function renderWorkflow(payload) {
+  const workflow = payload.workflow || {};
+  syncSuggestedInput("predictionDateInput", workflow.suggested_prediction_date);
+  syncSuggestedInput("validationDateInput", workflow.suggested_validation_date);
+  renderWorkflowSummary(workflow);
+
+  const hint = $("validationHint");
+  if (hint) {
+    const latestMarket = workflow.latest_market_date || "暂无";
+    const latestPrediction = workflow.latest_prediction_date || "暂无";
+    const validationText = workflow.validation_ready
+      ? `可验证 ${workflow.suggested_validation_date || latestPrediction} 的预测。`
+      : workflow.validation_reason || "暂无可验证预测，或后续行情还没入库。";
+    hint.textContent = `最新行情日 ${latestMarket}；最近预测日 ${latestPrediction}；${validationText}`;
+  }
+
+  const hasActive = Boolean(payload.active_model);
+  const canPredict = hasActive && Boolean(workflow.suggested_prediction_date);
+  const canValidate = hasActive && Boolean(workflow.suggested_validation_date) && Boolean(workflow.validation_ready);
+  if ($("runPredictionBtn")) $("runPredictionBtn").disabled = !canPredict;
+  if ($("runValidationBtn")) $("runValidationBtn").disabled = !canValidate;
+}
+
+function syncWorkflowButtons() {
+  if (state.overview) {
+    renderWorkflow(state.overview);
+  }
+}
+
 function renderOverview(payload) {
   const models = payload.models || [];
   const runs = payload.training_runs || [];
@@ -192,6 +274,8 @@ function renderOverview(payload) {
   renderPerformance(payload.model_performance || []);
   renderDefinitions("featureSets", payload.feature_sets || []);
   renderDefinitions("labelSets", payload.label_sets || []);
+  renderTrainingOptions(payload);
+  renderWorkflow(payload);
   renderCoach(payload);
 }
 
@@ -255,7 +339,7 @@ function renderCoach(payload) {
   }
   if (hasActive && !hasValidation) {
     $("coachTitle").textContent = "模型已上线，可以生成预测";
-    $("coachText").textContent = "输入一个交易日，先生成预测；下一交易日数据有了以后再验证。";
+    $("coachText").textContent = "系统已自动选择最近行情日；先生成预测，下一交易日数据有了以后再验证。";
     actions.innerHTML = `<button type="button" data-coach-action="runPrediction">生成预测</button>`;
     setStep("monitor");
     return;
@@ -269,8 +353,11 @@ function renderCoach(payload) {
   }
 
   $("coachTitle").textContent = "先训练一个候选模型";
-  $("coachText").textContent = "不用填复杂参数，点击新建训练任务即可。";
-  actions.innerHTML = `<button type="button" data-coach-action="queueTrain">新建训练任务</button>`;
+  $("coachText").textContent = "选择一个标签集后，可一键训练、审批并上线；后续再用 Top50 指标决定保留哪个版本。";
+  actions.innerHTML = `
+    <button type="button" data-coach-action="trainApproveActivate">一键训练并上线</button>
+    <button type="button" data-coach-action="queueTrain">只新建任务</button>
+  `;
   setStep("train");
 }
 
@@ -290,25 +377,32 @@ function signedPct(value) {
   return `${sign}${Math.round(number * 100) / 100}%`;
 }
 
+function topMetric(item, size = "50") {
+  return item.ranking?.top_n?.[size] || null;
+}
+
 function renderPerformance(items) {
   const body = $("performanceBody");
   if (!items.length) {
-    body.innerHTML = emptyRow("暂无模型表现数据", 6);
+    body.innerHTML = emptyRow("暂无模型表现数据", 8);
     return;
   }
   body.innerHTML = items
-    .map(
-      (item) => `
+    .map((item) => {
+      const top50 = topMetric(item);
+      return `
         <tr>
           <td title="${escapeHtml(item.model_id)}">${escapeHtml(shortId(item.name || item.model_id))}</td>
           <td>${badge(item.status)}</td>
           <td>${escapeHtml(item.prediction_count)}</td>
           <td>${escapeHtml(item.validation_count)}</td>
           <td>${percent(item.hit_rate)}</td>
-          <td>${signedPct(item.avg_next_close_pct)}</td>
+          <td>${percent(top50?.hit_rate)}</td>
+          <td>${signedPct(top50?.lift !== undefined && top50?.lift !== null ? top50.lift * 100 : null)}</td>
+          <td>${signedPct(top50?.avg_window_high_pct ?? top50?.avg_next_high_pct)}</td>
         </tr>
-      `,
-    )
+      `;
+    })
     .join("");
 }
 
@@ -357,25 +451,30 @@ async function loadOverview({ silent = false } = {}) {
   }
 }
 
+async function createTrainingRun() {
+  const res = await fetch("/api/admin/training-runs", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      dataset_version: "market_cache_v1",
+      feature_set: $("featureSetInput")?.value || "short_swing_v1",
+      label_set: $("labelSetInput")?.value || "next_high_3pct_v1",
+      notes: "manual queued from admin",
+    }),
+  });
+  const payload = await res.json();
+  if (!res.ok) {
+    throw new Error(payload.detail || `创建失败：${res.status}`);
+  }
+  return payload.item;
+}
+
 async function queueTrainingRun() {
   const button = $("queueTrainBtn");
   button.disabled = true;
   try {
-    const res = await fetch("/api/admin/training-runs", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        dataset_version: "market_cache_v1",
-        feature_set: "short_swing_v1",
-        label_set: "next_high_3pct_v1",
-        notes: "manual queued from admin",
-      }),
-    });
-    if (!res.ok) {
-      throw new Error(`创建失败：${res.status}`);
-    }
-    const payload = await res.json();
-    showToast(`已创建任务 ${shortId(payload.item?.run_id || "")}`);
+    const item = await createTrainingRun();
+    showToast(`已创建任务 ${shortId(item?.run_id || "")}`);
     await loadOverview({ silent: true });
   } catch (error) {
     showToast(error.message || "创建失败");
@@ -401,7 +500,7 @@ async function runFirstQueuedTraining() {
   await runTraining(run.run_id);
 }
 
-async function runTraining(runId) {
+async function runTraining(runId, { reload = true } = {}) {
   try {
     const res = await fetch(`/api/admin/training-runs/${encodeURIComponent(runId)}/run`, {
       method: "POST",
@@ -411,34 +510,72 @@ async function runTraining(runId) {
       throw new Error(payload.detail || `执行失败：${res.status}`);
     }
     showToast(`训练完成 ${shortId(payload.model?.model_id || "")}`);
-    await loadOverview({ silent: true });
+    if (reload) {
+      await loadOverview({ silent: true });
+    }
+    return payload;
   } catch (error) {
     showToast(error.message || "执行失败");
+    throw error;
   }
 }
 
-function pipelineTradeDate() {
-  const value = $("pipelineDateInput").value.trim();
+async function trainApproveActivate() {
+  const button = $("trainApproveActivateBtn");
+  button.disabled = true;
+  try {
+    showToast("正在创建训练任务");
+    const run = await createTrainingRun();
+    showToast("正在训练模型");
+    const trained = await runTraining(run.run_id, { reload: false });
+    const modelId = trained?.model?.model_id;
+    if (!modelId) {
+      throw new Error("训练完成但没有返回模型编号");
+    }
+    showToast("正在通过候选模型");
+    await mutateModel(modelId, "approve", { reload: false });
+    showToast("正在上线模型");
+    await mutateModel(modelId, "activate", { reload: false });
+    await loadOverview({ silent: true });
+    setView("predict");
+    showToast("模型已上线，可以生成预测");
+  } catch (error) {
+    showToast(error.message || "一键流程失败");
+    await loadOverview({ silent: true });
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function predictionTradeDate() {
+  const value = $("predictionDateInput")?.value.trim();
   if (value) {
     return value;
   }
-  const latestRun = state.overview?.pipelines?.recent_runs?.find((item) => item.trade_date);
-  return latestRun?.trade_date || "";
+  return "";
+}
+
+function validationTradeDate() {
+  const value = $("validationDateInput")?.value.trim();
+  if (value) {
+    return value;
+  }
+  return "";
 }
 
 async function runPrediction() {
-  const tradeDate = pipelineTradeDate();
-  if (!tradeDate) {
-    showToast("请输入交易日");
-    return;
-  }
+  const tradeDate = predictionTradeDate();
   const button = $("runPredictionBtn");
   button.disabled = true;
   try {
+    const body = { limit: 500 };
+    if (tradeDate) {
+      body.trade_date = tradeDate;
+    }
     const res = await fetch("/api/admin/predictions/run", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ trade_date: tradeDate, limit: 500 }),
+      body: JSON.stringify(body),
     });
     const payload = await res.json();
     if (!res.ok) {
@@ -449,34 +586,37 @@ async function runPrediction() {
   } catch (error) {
     showToast(error.message || "预测失败");
   } finally {
-    button.disabled = false;
+    syncWorkflowButtons();
   }
 }
 
 async function runValidation() {
-  const tradeDate = pipelineTradeDate();
-  if (!tradeDate) {
-    showToast("请输入交易日");
-    return;
-  }
+  const tradeDate = validationTradeDate();
   const button = $("runValidationBtn");
   button.disabled = true;
   try {
+    const body = {};
+    if (tradeDate) {
+      body.trade_date = tradeDate;
+    }
     const res = await fetch("/api/admin/validations/run", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ trade_date: tradeDate }),
+      body: JSON.stringify(body),
     });
     const payload = await res.json();
     if (!res.ok) {
       throw new Error(payload.detail || `验证失败：${res.status}`);
     }
-    showToast(`验证完成，命中率 ${Math.round((payload.hit_rate || 0) * 100)}%`);
+    const top50 = payload.ranking?.top_n?.["50"];
+    const suffix = top50 ? `，Top50 ${Math.round((top50.hit_rate || 0) * 100)}%` : "";
+    showToast(`验证完成，命中率 ${Math.round((payload.hit_rate || 0) * 100)}%${suffix}`);
     await loadOverview({ silent: true });
+    setView("monitor");
   } catch (error) {
     showToast(error.message || "验证失败");
   } finally {
-    button.disabled = false;
+    syncWorkflowButtons();
   }
 }
 
@@ -498,7 +638,7 @@ async function activateFirstApproved() {
   await mutateModel(model.model_id, "activate");
 }
 
-async function mutateModel(modelId, action) {
+async function mutateModel(modelId, action, { reload = true } = {}) {
   try {
     const res = await fetch(`/api/admin/models/${encodeURIComponent(modelId)}/${action}`, {
       method: "POST",
@@ -511,9 +651,13 @@ async function mutateModel(modelId, action) {
     }
     const names = {activate: "已上线", approve: "已通过", reject: "已拒绝", deactivate: "已下线", archive: "已归档"};
     showToast(`${names[action] || "已更新"} ${shortId(modelId)}`);
-    await loadOverview({ silent: true });
+    if (reload) {
+      await loadOverview({ silent: true });
+    }
+    return payload;
   } catch (error) {
     showToast(error.message || "操作失败");
+    throw error;
   }
 }
 
@@ -521,6 +665,7 @@ function handleCoachAction(action) {
   const handlers = {
     queueTrain: queueTrainingRun,
     runQueued: runFirstQueuedTraining,
+    trainApproveActivate,
     approveCandidate: approveFirstCandidate,
     activateApproved: activateFirstApproved,
     runPrediction,
@@ -574,6 +719,7 @@ window.addEventListener("DOMContentLoaded", () => {
   bindOptional("queueTrainBtn", "click", queueTrainingRun);
   bindOptional("queueTrainBtnTraining", "click", queueTrainingRun);
   bindOptional("runQueuedBtn", "click", runFirstQueuedTraining);
+  bindOptional("trainApproveActivateBtn", "click", trainApproveActivate);
   bindOptional("approveCandidateBtn", "click", approveFirstCandidate);
   bindOptional("activateApprovedBtn", "click", activateFirstApproved);
   bindOptional("runPredictionBtn", "click", runPrediction);

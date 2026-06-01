@@ -11,8 +11,10 @@ from pydantic import BaseModel, Field
 
 from app.core.config import ADMIN_TOKEN_ENV, STATIC_DIR
 from app.db import model_repo
+from app.repositories import market_cache
 from app.services import model_pipeline
 from modeling.features.registry import list_feature_sets
+from modeling.labels.builder import label_horizon
 from modeling.labels.registry import list_label_sets
 from modeling.pipelines.service import planned_pipeline
 
@@ -67,6 +69,42 @@ async def pipeline_overview() -> dict[str, Any]:
     }
 
 
+async def workflow_state() -> dict[str, Any]:
+    active = await model_repo.active_model()
+    latest_market_date = await market_cache.latest_trade_date("daily")
+    active_model_id = str(active["model_id"]) if active else None
+    latest_prediction_date = await model_repo.latest_prediction_trade_date(active_model_id)
+    suggested_prediction_date = latest_market_date or ""
+    suggested_validation_date = ""
+    validation_next_trade_date = ""
+    validation_ready = False
+    validation_reason = "没有激活模型。"
+    if active:
+        validation_reason = "还没有生成预测。"
+        horizon = label_horizon(str(active.get("label_set") or "next_high_3pct_v1"))
+        prediction_dates = await model_repo.recent_prediction_trade_dates(model_id=active_model_id, limit=30)
+        for trade_date in prediction_dates:
+            available_days = await model_pipeline.available_validation_trade_days(trade_date, horizon=horizon)
+            if len(available_days) >= horizon:
+                suggested_validation_date = trade_date
+                validation_next_trade_date = available_days[0][0] or ""
+                validation_ready = True
+                validation_reason = "已有足够后续行情，可以验证。"
+                break
+        if not validation_ready and latest_prediction_date:
+            suggested_validation_date = latest_prediction_date
+            validation_reason = f"当前标签需要预测日后 {horizon} 个交易日行情，数据还不够。"
+    return {
+        "latest_market_date": latest_market_date,
+        "latest_prediction_date": latest_prediction_date,
+        "suggested_prediction_date": suggested_prediction_date,
+        "suggested_validation_date": suggested_validation_date,
+        "validation_next_trade_date": validation_next_trade_date,
+        "validation_ready": validation_ready,
+        "validation_reason": validation_reason,
+    }
+
+
 class TrainingRunRequest(BaseModel):
     dataset_version: str = Field(default="market_cache_v1", min_length=1)
     feature_set: str = Field(default="short_swing_v1", min_length=1)
@@ -89,12 +127,12 @@ class ModelRegisterRequest(BaseModel):
 
 
 class PredictionRunRequest(BaseModel):
-    trade_date: str = Field(min_length=8, max_length=8)
+    trade_date: str | None = Field(default=None, min_length=8, max_length=8)
     limit: int = Field(default=500, ge=1, le=6000)
 
 
 class ValidationRunRequest(BaseModel):
-    trade_date: str = Field(min_length=8, max_length=8)
+    trade_date: str | None = Field(default=None, min_length=8, max_length=8)
 
 
 class RollbackRequest(BaseModel):
@@ -119,6 +157,7 @@ async def overview() -> dict[str, Any]:
         "model_performance": (await model_repo.model_performance_overview())["items"],
         "training_runs": await model_repo.list_training_runs(limit=10),
         "pipelines": await pipeline_overview(),
+        "workflow": await workflow_state(),
         "feature_sets": list_feature_sets(),
         "label_sets": list_label_sets(),
     }
@@ -228,7 +267,10 @@ async def predictions(trade_date: Annotated[str | None, Query()] = None) -> dict
 @router.post("/api/admin/predictions/run")
 async def run_prediction(payload: PredictionRunRequest) -> dict[str, Any]:
     try:
-        return await model_pipeline.run_daily_prediction(payload.trade_date, limit=payload.limit)
+        trade_date = payload.trade_date or (await workflow_state())["suggested_prediction_date"]
+        if not trade_date:
+            raise ValueError("没有可预测的行情日期")
+        return await model_pipeline.run_daily_prediction(trade_date, limit=payload.limit)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -246,6 +288,9 @@ async def model_performance() -> dict[str, Any]:
 @router.post("/api/admin/validations/run")
 async def run_validation(payload: ValidationRunRequest) -> dict[str, Any]:
     try:
-        return await model_pipeline.run_next_day_validation(payload.trade_date)
+        trade_date = payload.trade_date or (await workflow_state())["suggested_validation_date"]
+        if not trade_date:
+            raise ValueError("没有可验证的预测日期")
+        return await model_pipeline.run_next_day_validation(trade_date)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

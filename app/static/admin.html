@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>模型管理台</title>
-    <link rel="stylesheet" href="/static/admin.css?v=20260528-ml-admin-5" />
-    <script src="/static/admin.js?v=20260528-ml-admin-5" defer></script>
+    <link rel="stylesheet" href="/static/admin.css?v=20260601-ux-1" />
+    <script src="/static/admin.js?v=20260601-ux-1" defer></script>
   </head>
   <body>
     <main class="admin-shell">
@@ -126,6 +126,7 @@
             <div class="quick-actions">
               <button id="queueTrainBtn" type="button">新建训练任务</button>
               <button id="runQueuedBtn" type="button">执行待训练任务</button>
+              <button id="trainApproveActivateBtn" type="button">一键训练并上线</button>
               <button id="approveCandidateBtn" type="button">通过候选模型</button>
               <button id="activateApprovedBtn" type="button">上线已通过模型</button>
               <button id="rollbackModelBtn" type="button">回滚上一版</button>
@@ -146,6 +147,20 @@
           </header>
 
           <section class="page-card">
+            <div class="section-title">
+              <h3>训练配置</h3>
+              <p>选择本次训练使用的特征集和标签集。</p>
+            </div>
+            <div class="form-card">
+              <label class="field">
+                <span>特征集</span>
+                <select id="featureSetInput"></select>
+              </label>
+              <label class="field">
+                <span>标签集</span>
+                <select id="labelSetInput"></select>
+              </label>
+            </div>
             <div class="table-wrap">
               <table>
                 <thead>
@@ -200,18 +215,32 @@
             <div>
               <span>Prediction</span>
               <h2>预测验证</h2>
-              <p>输入交易日，生成预测或验证已有预测。</p>
+              <p>默认使用系统推荐日期；只有需要回测或重跑时才手动覆盖。</p>
             </div>
           </header>
 
-          <section class="page-card form-card">
-            <label class="field">
-              <span>交易日</span>
-              <input id="pipelineDateInput" type="text" placeholder="YYYYMMDD" />
-            </label>
+          <section class="page-card workflow-card">
+            <div class="section-title">
+              <h3>自动工作流</h3>
+              <p id="validationHint">先生成预测；下一交易日行情有数据后，再验证 Top N 是否跑赢全市场基准。</p>
+            </div>
+            <div class="workflow-summary" id="workflowSummary"></div>
+            <details class="advanced-fields">
+              <summary>手动覆盖交易日</summary>
+              <div class="field-grid">
+                <label class="field">
+                  <span>预测交易日</span>
+                  <input id="predictionDateInput" type="text" placeholder="留空自动使用推荐日期" />
+                </label>
+                <label class="field">
+                  <span>验证预测日</span>
+                  <input id="validationDateInput" type="text" placeholder="留空自动验证最近可验证预测" />
+                </label>
+              </div>
+            </details>
             <div class="form-actions">
-              <button id="runPredictionBtn" type="button">生成预测</button>
-              <button id="runValidationBtn" type="button">验证预测</button>
+              <button id="runPredictionBtn" type="button">用最新行情生成预测</button>
+              <button id="runValidationBtn" type="button">验证最近可验证预测</button>
             </div>
           </section>
         </section>
@@ -221,7 +250,7 @@
             <div>
               <span>Monitor</span>
               <h2>效果监控</h2>
-              <p>按模型聚合预测数、验证数、命中率和平均收益。</p>
+              <p>按模型聚合预测数、验证数、整体命中率和 Top N 排序表现。</p>
             </div>
           </header>
 
@@ -235,7 +264,9 @@
                     <th>预测</th>
                     <th>验证</th>
                     <th>命中率</th>
-                    <th>平均收益</th>
+                    <th>Top50</th>
+                    <th>提升</th>
+                    <th>最高涨幅</th>
                   </tr>
                 </thead>
                 <tbody id="performanceBody"></tbody>

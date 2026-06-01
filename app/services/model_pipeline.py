@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +12,7 @@ from app.services import analysis, market_data
 from modeling.datasets.supervised import build_supervised_samples
 from modeling.features.builder import build_feature_row
 from modeling.inference.baseline import predict_one
-from modeling.labels.builder import build_label
+from modeling.labels.builder import build_label, label_horizon
 from modeling.registry.artifacts import save_model_artifact
 from modeling.training.baseline import train_baseline_model
 
@@ -111,6 +112,59 @@ def _history_by_code(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any
     return by_code
 
 
+def _future_rows_for_code(
+    by_code: dict[str, list[dict[str, Any]]],
+    ts_code: str,
+    trade_date: str,
+    horizon: int,
+) -> list[dict[str, Any]]:
+    return [
+        item
+        for item in by_code.get(ts_code, [])
+        if str(item.get("trade_date") or "") > trade_date
+    ][:horizon]
+
+
+def _average(values: list[float | None]) -> float | None:
+    cleaned = [float(value) for value in values if value is not None]
+    return round(sum(cleaned) / len(cleaned), 4) if cleaned else None
+
+
+def _topn_validation_summary(
+    results: list[dict[str, Any]],
+    market_results: list[dict[str, Any]],
+    sizes: tuple[int, ...] = (20, 50, 100),
+) -> dict[str, Any]:
+    market_hit_rate = analysis.avg([float(item["label_value"]) for item in market_results]) if market_results else 0.0
+    market_hit_rate = round(float(market_hit_rate or 0.0), 4)
+    sorted_results = sorted(
+        results,
+        key=lambda item: (
+            float((item.get("result") or {}).get("probability") or 0.0),
+            float((item.get("result") or {}).get("ml_score") or 0.0),
+        ),
+        reverse=True,
+    )
+    top_n: dict[str, Any] = {}
+    for size in sizes:
+        picked = sorted_results[: min(size, len(sorted_results))]
+        hit_rate = analysis.avg([float(item["label_value"]) for item in picked]) if picked else 0.0
+        hit_rate = round(float(hit_rate or 0.0), 4)
+        top_n[str(size)] = {
+            "count": len(picked),
+            "hit_rate": hit_rate,
+            "lift": round(hit_rate - market_hit_rate, 4),
+            "avg_next_close_pct": _average([item.get("next_close_pct") for item in picked]),
+            "avg_next_high_pct": _average([item.get("next_high_pct") for item in picked]),
+            "avg_window_high_pct": _average([item.get("window_high_pct") for item in picked]),
+        }
+    return {
+        "market_count": len(market_results),
+        "market_hit_rate": market_hit_rate,
+        "top_n": top_n,
+    }
+
+
 async def run_daily_prediction(trade_date: str, *, limit: int = 500) -> dict[str, Any]:
     model = await model_repo.active_model()
     if not model:
@@ -161,29 +215,71 @@ async def run_daily_prediction(trade_date: str, *, limit: int = 500) -> dict[str
     return {"ok": True, "model": model, "trade_date": end_date, "count": len(predictions), "items": predictions, "pipeline": pipeline}
 
 
+async def next_available_validation_rows(trade_date: str) -> tuple[str | None, list[dict[str, Any]]]:
+    days = await available_validation_trade_days(trade_date, horizon=1)
+    return days[0] if days else (None, [])
+
+
+async def available_validation_trade_days(
+    trade_date: str,
+    *,
+    horizon: int = 1,
+    lookahead_days: int = 15,
+    allow_online: bool = False,
+) -> list[tuple[str, list[dict[str, Any]]]]:
+    days: list[tuple[str, list[dict[str, Any]]]] = []
+    current = datetime.strptime(trade_date, "%Y%m%d").date() + timedelta(days=1)
+    for _ in range(max(1, lookahead_days)):
+        if current.weekday() < 5:
+            day = current.strftime("%Y%m%d")
+            if allow_online:
+                rows = await market_data.daily_rows_raw(day, market_data.HISTORY_FIELDS)
+            else:
+                rows = await market_cache.fetch_rows(
+                    "daily",
+                    trade_date=day,
+                    fields=market_data.HISTORY_FIELDS,
+                    require_complete=True,
+                )
+            if rows:
+                days.append((day, rows))
+                if len(days) >= horizon:
+                    break
+        current += timedelta(days=1)
+    return days
+
+
 def _validation_result(
     prediction: dict[str, Any],
     current_row: dict[str, Any],
     next_row: dict[str, Any],
     *,
     label_set: str,
+    future_rows: list[dict[str, Any]] | None = None,
+    rank: int | None = None,
 ) -> dict[str, Any]:
     close = analysis.number(current_row, "close")
     next_close = analysis.number(next_row, "close")
     next_high = analysis.number(next_row, "high")
     next_close_pct = ((next_close - close) / close * 100) if close and next_close is not None else None
     next_high_pct = ((next_high - close) / close * 100) if close and next_high is not None else None
-    label_value = build_label(current_row, next_row, label_set)
+    future = future_rows or [next_row]
+    future_highs = [value for item in future if (value := analysis.number(item, "high")) is not None]
+    window_high_pct = ((max(future_highs) - close) / close * 100) if close and future_highs else None
+    label_value = build_label(current_row, next_row, label_set, future_rows=future)
     return {
         "ts_code": prediction["ts_code"],
         "label_value": label_value,
         "next_trade_date": str(next_row.get("trade_date") or ""),
         "next_close_pct": round(next_close_pct, 4) if next_close_pct is not None else None,
         "next_high_pct": round(next_high_pct, 4) if next_high_pct is not None else None,
+        "window_high_pct": round(window_high_pct, 4) if window_high_pct is not None else None,
         "result": {
             "probability": prediction.get("probability"),
             "ml_score": prediction.get("ml_score"),
             "label_set": label_set,
+            "rank": rank,
+            "label_horizon": len(future),
         },
     }
 
@@ -197,29 +293,53 @@ async def run_next_day_validation(trade_date: str) -> dict[str, Any]:
     if not predictions:
         raise ValueError("没有可验证的预测结果")
 
+    label_set = str(model.get("label_set") or "next_high_3pct_v1")
+    horizon = label_horizon(label_set)
     current_rows = await market_cache.fetch_rows("daily", trade_date=trade_date)
-    next_date, next_rows = await market_data.next_trade_rows_raw(trade_date, market_data.HISTORY_FIELDS)
-    if not next_date or not next_rows:
-        raise ValueError("没有下一交易日行情，暂不能验证")
+    available_days = await available_validation_trade_days(trade_date, horizon=horizon, allow_online=True)
+    if len(available_days) < horizon:
+        raise ValueError("预测日后的行情天数还不够，暂不能验证")
+    next_date, next_rows = available_days[0]
+    all_rows = await market_cache.fetch_rows("daily", start_date=trade_date)
+    by_code = _history_by_code(all_rows)
 
     current_map = {str(row.get("ts_code") or ""): row for row in current_rows}
     next_map = {str(row.get("ts_code") or ""): row for row in next_rows}
-    label_set = str(model.get("label_set") or "next_high_3pct_v1")
+    market_results: list[dict[str, Any]] = []
+    for ts_code, current_row in current_map.items():
+        future_rows = _future_rows_for_code(by_code, ts_code, trade_date, horizon)
+        next_row = future_rows[0] if future_rows else next_map.get(ts_code)
+        if next_row and len(future_rows or [next_row]) >= horizon:
+            market_results.append(
+                _validation_result(
+                    {"ts_code": ts_code},
+                    current_row,
+                    next_row,
+                    label_set=label_set,
+                    future_rows=future_rows or [next_row],
+                )
+            )
+
     results: list[dict[str, Any]] = []
-    for prediction in predictions:
+    for rank, prediction in enumerate(predictions, start=1):
         ts_code = str(prediction.get("ts_code") or "")
-        if ts_code in current_map and ts_code in next_map:
+        future_rows = _future_rows_for_code(by_code, ts_code, trade_date, horizon)
+        next_row = future_rows[0] if future_rows else next_map.get(ts_code)
+        if ts_code in current_map and next_row and len(future_rows or [next_row]) >= horizon:
             results.append(
                 _validation_result(
                     prediction,
                     current_map[ts_code],
-                    next_map[ts_code],
+                    next_row,
                     label_set=label_set,
+                    future_rows=future_rows or [next_row],
+                    rank=rank,
                 )
             )
 
     await model_repo.save_validation_results(str(model["model_id"]), trade_date, results)
     hit_rate = analysis.avg([float(item["label_value"]) for item in results]) if results else 0.0
+    ranking = _topn_validation_summary(results, market_results)
     pipeline = await model_repo.create_pipeline_run(
         {
             "pipeline_type": "validation",
@@ -231,6 +351,7 @@ async def run_next_day_validation(trade_date: str) -> dict[str, Any]:
                 "next_trade_date": next_date,
                 "count": len(results),
                 "hit_rate": round(hit_rate or 0.0, 4),
+                "ranking": ranking,
             },
         }
     )
@@ -241,6 +362,7 @@ async def run_next_day_validation(trade_date: str) -> dict[str, Any]:
         "next_trade_date": next_date,
         "count": len(results),
         "hit_rate": round(hit_rate or 0.0, 4),
+        "ranking": ranking,
         "items": results,
         "pipeline": pipeline,
     }

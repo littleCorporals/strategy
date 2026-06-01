@@ -61,7 +61,8 @@ button:disabled {
   opacity: 0.58;
 }
 
-input {
+input,
+select {
   width: 100%;
   height: 36px;
   padding: 0 10px;
@@ -69,6 +70,7 @@ input {
   border-radius: 6px;
   background: #fff;
   color: var(--text);
+  font: inherit;
 }
 
 .admin-shell {
@@ -416,9 +418,76 @@ tr:last-child td {
   padding: 16px;
 }
 
+.workflow-card {
+  max-width: 760px;
+  display: grid;
+  gap: 14px;
+  padding-bottom: 14px;
+}
+
+.page-card .form-card {
+  max-width: none;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  border-bottom: 1px solid var(--line-soft);
+}
+
 .field {
   display: grid;
   gap: 6px;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 14px;
+  padding-top: 12px;
+}
+
+.workflow-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  gap: 10px;
+  padding: 0 14px;
+}
+
+.workflow-item {
+  min-height: 74px;
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: #fbfcfc;
+}
+
+.workflow-item span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.workflow-item strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.advanced-fields {
+  margin: 0 14px;
+  padding: 11px 12px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.advanced-fields summary {
+  color: var(--brand);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.workflow-card .form-actions {
+  padding: 0 14px;
 }
 
 .event-list,
@@ -642,6 +711,15 @@ tr:last-child td {
 
   .table-wrap {
     max-height: none;
+  }
+
+  .page-card .form-card {
+    grid-template-columns: 1fr;
+  }
+
+  .workflow-summary,
+  .field-grid {
+    grid-template-columns: 1fr;
   }
 
   .stage,

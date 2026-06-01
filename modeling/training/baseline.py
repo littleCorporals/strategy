@@ -71,6 +71,44 @@ def _classification_metrics(samples: list[dict[str, Any]], artifact: dict[str, A
     }
 
 
+def _average_metric(samples: list[dict[str, Any]], key: str) -> float | None:
+    values = [float(sample[key]) for sample in samples if sample.get(key) is not None]
+    return round(_mean(values), 4) if values else None
+
+
+def _topn_metrics(samples: list[dict[str, Any]], artifact: dict[str, Any], sizes: tuple[int, ...] = (20, 50, 100)) -> dict[str, Any]:
+    if not samples:
+        return {
+            "market_hit_rate": 0.0,
+            "top_n": {},
+        }
+    scored = [
+        {
+            **sample,
+            "ml_score": score_features(sample.get("features") or {}, artifact),
+        }
+        for sample in samples
+    ]
+    scored.sort(key=lambda item: float(item["ml_score"]), reverse=True)
+    market_hit_rate = round(_mean([float(sample.get("label") or 0) for sample in samples]), 4)
+    top_n: dict[str, Any] = {}
+    for size in sizes:
+        picked = scored[: min(size, len(scored))]
+        hit_rate = round(_mean([float(sample.get("label") or 0) for sample in picked]), 4) if picked else 0.0
+        top_n[str(size)] = {
+            "count": len(picked),
+            "hit_rate": hit_rate,
+            "lift": round(hit_rate - market_hit_rate, 4),
+            "avg_next_close_pct": _average_metric(picked, "next_close_pct"),
+            "avg_next_high_pct": _average_metric(picked, "next_high_pct"),
+            "avg_window_high_pct": _average_metric(picked, "window_high_pct"),
+        }
+    return {
+        "market_hit_rate": market_hit_rate,
+        "top_n": top_n,
+    }
+
+
 def train_baseline_model(
     samples: list[dict[str, Any]],
     *,
@@ -125,12 +163,18 @@ def train_baseline_model(
 
     train_metrics = _classification_metrics(train_samples, artifact)
     validation_metrics = _classification_metrics(validation_samples, artifact)
+    train_ranking = _topn_metrics(train_samples, artifact)
+    validation_ranking = _topn_metrics(validation_samples, artifact)
     metrics = {
         "sample_count": len(samples),
         "train_sample_count": len(train_samples),
         "validation_sample_count": len(validation_samples),
         "train": train_metrics,
         "validation": validation_metrics,
+        "ranking": {
+            "train": train_ranking,
+            "validation": validation_ranking,
+        },
         "accuracy": validation_metrics["accuracy"],
         "precision": validation_metrics["precision"],
         "recall": validation_metrics["recall"],
