@@ -226,6 +226,20 @@ function toTradeDate(dateValue) {
   return String(dateValue || "").replaceAll("-", "");
 }
 
+function bindDatePickers() {
+  document.querySelectorAll('input[type="date"]').forEach((input) => {
+    input.setAttribute("inputmode", "none");
+    input.addEventListener("keydown", (event) => {
+      if (["Tab", "Enter", "Escape", "Backspace", "Delete"].includes(event.key)) {
+        return;
+      }
+      event.preventDefault();
+    });
+    input.addEventListener("paste", (event) => event.preventDefault());
+    input.addEventListener("drop", (event) => event.preventDefault());
+  });
+}
+
 function numberValue(value) {
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
@@ -1670,6 +1684,7 @@ function bind() {
 
 window.addEventListener("DOMContentLoaded", async () => {
   bind();
+  bindDatePickers();
   iconRefresh();
   const initialView = validView(window.location.hash.replace("#", ""));
   setView(initialView, { updateHash: Boolean(window.location.hash) });

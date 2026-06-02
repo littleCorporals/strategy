@@ -57,8 +57,78 @@ function showToast(message) {
   showToast.timer = window.setTimeout(() => toast.classList.remove("show"), 2200);
 }
 
+function bindDatePickers() {
+  document.querySelectorAll('input[type="date"]').forEach((input) => {
+    input.setAttribute("inputmode", "none");
+    input.addEventListener("keydown", (event) => {
+      if (["Tab", "Enter", "Escape", "Backspace", "Delete"].includes(event.key)) {
+        return;
+      }
+      event.preventDefault();
+    });
+    input.addEventListener("paste", (event) => event.preventDefault());
+    input.addEventListener("drop", (event) => event.preventDefault());
+  });
+}
+
+function fromTradeDate(value) {
+  const raw = text(value, "").replaceAll("-", "");
+  if (!/^\d{8}$/.test(raw)) {
+    return "";
+  }
+  return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+}
+
+function toTradeDate(value) {
+  return text(value, "").replaceAll("-", "");
+}
+
 function emptyRow(message, columns) {
   return `<tr><td colspan="${columns}"><div class="empty">${message}</div></td></tr>`;
+}
+
+const HELP_TEXT = {
+  task: "本次训练任务编号。鼠标停在编号上可以看完整 run_id。",
+  status: "训练任务当前状态：待训练、训练中、已完成或失败。",
+  featureLabel: "特征集决定输入模型的字段；标签集决定模型要预测的目标。",
+  samples: "总样本是参与训练和验证的样本数量；验证样本是时间切分后留出来评估模型的数据。",
+  validationF1: "F1 同时考虑精确率和召回率，越高说明验证集上的正例识别越均衡。",
+  logLoss: "Log Loss 衡量概率预测质量，越低越好；它比单纯命中率更关注概率是否靠谱。",
+  top50: "按模型分数排序前 50 只股票的标签命中率，候选池场景优先看这个指标。",
+  top50Lift: "Top50 命中率减去全市场基准命中率，正数越大说明排序越有用。",
+  params: "训练超参数，例如验证集比例、学习率、L2 正则、最大迭代轮次和早停耐心。",
+  accuracy: "验证集里预测对的比例。样本正负不均衡时不能只看它。",
+  precision: "模型判断为正例的样本里，真实命中的比例。",
+  recall: "真实正例里，被模型找出来的比例。",
+  trainSamples: "从缓存历史行情构造出的监督学习样本数量。",
+  featureCount: "当前模型实际使用的特征字段数量。",
+  marketBase: "同一验证区间里，全市场不排序直接观察的平均命中率。",
+  iterations: "训练实际执行的迭代轮次。",
+  bestIteration: "验证集 Log Loss 最优时对应的训练轮次。",
+  nonZeroWeights: "权重不为 0 的特征数量，反映模型实际使用了多少特征。",
+  positiveRate: "验证集里标签为 1 的样本比例，用来判断正负样本是否均衡。",
+  validationRatio: "从时间序列尾部切出来做验证集的比例。",
+  learningRate: "每轮参数更新步长，太大容易震荡，太小训练慢。",
+  l2: "L2 正则强度，用来限制权重过大，降低过拟合风险。",
+  maxIter: "训练最多迭代多少轮。",
+  patience: "验证集长期不改善时提前停止训练的等待轮数。",
+};
+
+function helpTip(key, fallback = "") {
+  const value = HELP_TEXT[key] || fallback;
+  if (!value) {
+    return "";
+  }
+  return `
+    <span class="help-tip" tabindex="0" title="${escapeHtml(value)}" aria-label="${escapeHtml(value)}">
+      ?
+      <span class="help-popover" role="tooltip">${escapeHtml(value)}</span>
+    </span>
+  `;
+}
+
+function helpLabel(label, key, fallback = "") {
+  return `<span class="help-label">${escapeHtml(label)}${helpTip(key, fallback)}</span>`;
 }
 
 function modelActions(item) {
@@ -102,25 +172,95 @@ function renderModels(models) {
     .join("");
 }
 
+function metricSummary(metrics) {
+  const data = metrics || {};
+  const ranking = data.ranking?.validation || {};
+  const top50 = ranking.top_n?.["50"] || {};
+  return {
+    sampleCount: data.sample_count,
+    validationSampleCount: data.validation_sample_count,
+    f1: data.validation?.f1 ?? data.f1,
+    logLoss: data.validation?.log_loss,
+    top50HitRate: top50.hit_rate,
+    top50Lift: top50.lift,
+    marketHitRate: ranking.market_hit_rate,
+  };
+}
+
+function paramSummary(params) {
+  const data = params || {};
+  const keys = ["validation_ratio", "learning_rate", "l2", "max_iter", "patience"];
+  const parts = keys
+    .filter((key) => data[key] !== undefined && data[key] !== null && data[key] !== "")
+    .map((key) => `${key}=${data[key]}`);
+  return parts.length ? parts.join(" · ") : "-";
+}
+
+function paramHelpKey(key) {
+  const mapping = {
+    validation_ratio: "validationRatio",
+    learning_rate: "learningRate",
+    l2: "l2",
+    max_iter: "maxIter",
+    patience: "patience",
+  };
+  return mapping[key] || "params";
+}
+
+function compactMetricBlock(rows) {
+  return `
+    <div class="compact-metrics">
+      ${rows
+        .map(
+          ([label, value, helpKey]) => `
+            <span>
+              <b>${helpKey ? helpLabel(label, helpKey) : escapeHtml(label)}</b>
+              ${escapeHtml(value)}
+            </span>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
 function renderRuns(runs) {
   const body = $("runsBody");
   if (!runs.length) {
-    body.innerHTML = emptyRow("还没有训练任务。点击上方“新建训练任务”即可开始。", 6);
+    body.innerHTML = emptyRow("还没有训练任务。点击上方“新建训练任务”即可开始。", 8);
     return;
   }
   body.innerHTML = runs
-    .map(
-      (item) => `
+    .map((item) => {
+      const summary = metricSummary(item.metrics || {});
+      return `
         <tr>
-          <td title="${escapeHtml(item.run_id)}">${escapeHtml(shortId(item.run_id))}</td>
+          <td title="${escapeHtml(item.run_id)}">
+            <strong>${escapeHtml(shortId(item.run_id))}</strong>
+            <small>${escapeHtml(item.created_at)}</small>
+          </td>
           <td>${badge(item.status)}</td>
-          <td>${escapeHtml(item.dataset_version)}</td>
-          <td>${escapeHtml(item.feature_set)}</td>
-          <td>${escapeHtml(item.created_at)}</td>
+          <td>
+            <strong>${escapeHtml(item.feature_set)}</strong>
+            <small>${escapeHtml(item.label_set)}</small>
+          </td>
+          <td>${compactMetricBlock([
+            ["总", text(summary.sampleCount), "trainSamples"],
+            ["验证", text(summary.validationSampleCount), "samples"],
+          ])}</td>
+          <td>${compactMetricBlock([
+            ["F1", percent(summary.f1), "validationF1"],
+            ["Loss", decimal(summary.logLoss, 4), "logLoss"],
+          ])}</td>
+          <td>${compactMetricBlock([
+            ["命中", percent(summary.top50HitRate), "top50"],
+            ["提升", signedPct(summary.top50Lift !== undefined && summary.top50Lift !== null ? summary.top50Lift * 100 : null), "top50Lift"],
+          ])}</td>
+          <td title="${escapeHtml(JSON.stringify(item.params || {}))}">${escapeHtml(paramSummary(item.params || {}))}</td>
           <td>${runActions(item)}</td>
         </tr>
-      `,
-    )
+      `;
+    })
     .join("");
 }
 
@@ -201,9 +341,9 @@ function syncSuggestedInput(id, value) {
   if (!input) {
     return;
   }
-  input.placeholder = value ? `自动：${value}` : "暂无推荐日期";
+  input.placeholder = value ? fromTradeDate(value) : "暂无推荐日期";
   if (input.dataset.autofilled === "true" && value) {
-    input.value = value;
+    input.value = fromTradeDate(value);
   }
 }
 
@@ -232,6 +372,7 @@ function renderWorkflow(payload) {
   const workflow = payload.workflow || {};
   syncSuggestedInput("predictionDateInput", workflow.suggested_prediction_date);
   syncSuggestedInput("validationDateInput", workflow.suggested_validation_date);
+  syncHistoryDefaults(workflow);
   renderWorkflowSummary(workflow);
 
   const hint = $("validationHint");
@@ -249,6 +390,32 @@ function renderWorkflow(payload) {
   const canValidate = hasActive && Boolean(workflow.suggested_validation_date) && Boolean(workflow.validation_ready);
   if ($("runPredictionBtn")) $("runPredictionBtn").disabled = !canPredict;
   if ($("runValidationBtn")) $("runValidationBtn").disabled = !canValidate;
+}
+
+function previousYearDate(value) {
+  const raw = text(value, "");
+  if (!/^\d{8}$/.test(raw)) {
+    return "";
+  }
+  const year = Math.max(1900, Number(raw.slice(0, 4)) - 1);
+  return `${year}${raw.slice(4)}`;
+}
+
+function syncHistoryDefaults(workflow) {
+  const start = $("backfillStartInput");
+  const end = $("backfillEndInput");
+  const latest = workflow.latest_market_date || workflow.suggested_prediction_date || "";
+  if (start && !start.value && latest) {
+    start.placeholder = fromTradeDate(previousYearDate(latest)) || "选择开始日期";
+  }
+  if (end && latest) {
+    end.placeholder = fromTradeDate(latest) || "选择结束日期";
+  }
+  const hint = $("historyBackfillHint");
+  if (hint) {
+    const latestText = latest || "暂无";
+    hint.textContent = `当前最新行情日 ${latestText}。历史越长，训练/验证越能覆盖不同行情阶段；批量训练会按 Top50 提升自动选优。`;
+  }
 }
 
 function syncWorkflowButtons() {
@@ -408,18 +575,22 @@ function topMetric(item, size = "50") {
 }
 
 function metricRow(label, value) {
+  return metricRowHelp(label, value, "");
+}
+
+function metricRowHelp(label, value, helpKey, fallback = "") {
   return `
     <div class="metric-detail-item">
-      <span>${escapeHtml(label)}</span>
+      <span>${helpKey ? helpLabel(label, helpKey, fallback) : escapeHtml(label)}</span>
       <strong>${escapeHtml(value)}</strong>
     </div>
   `;
 }
 
-function kpi(label, value) {
+function kpi(label, value, helpKey = "") {
   return `
     <div class="metric-kpi">
-      <span>${escapeHtml(label)}</span>
+      <span>${helpKey ? helpLabel(label, helpKey) : escapeHtml(label)}</span>
       <strong>${escapeHtml(value)}</strong>
     </div>
   `;
@@ -434,10 +605,10 @@ function metricPill(label, value, tone = "neutral") {
   `;
 }
 
-function scoreCard(label, value, hint, tone = "neutral") {
+function scoreCard(label, value, hint, tone = "neutral", helpKey = "") {
   return `
     <div class="score-card ${escapeHtml(tone)}">
-      <span>${escapeHtml(label)}</span>
+      <span>${helpKey ? helpLabel(label, helpKey) : escapeHtml(label)}</span>
       <strong>${escapeHtml(value)}</strong>
       <small>${escapeHtml(hint)}</small>
     </div>
@@ -505,7 +676,7 @@ function renderRankingSummary(topN) {
         <div class="ranking-summary-item">
           <span>Top${escapeHtml(size)}</span>
           <strong>${escapeHtml(percent(item.hit_rate))}</strong>
-          <small class="${tone}">提升 ${escapeHtml(signedPct(lift !== null ? lift * 100 : null))}</small>
+          <small class="${tone}">${helpLabel("提升", "top50Lift")} ${escapeHtml(signedPct(lift !== null ? lift * 100 : null))}</small>
           <b>${escapeHtml(signedPct(item.avg_window_high_pct ?? item.avg_next_high_pct))}</b>
         </div>
       `;
@@ -683,6 +854,7 @@ function renderDiagnostics(payload) {
   const topN = metrics.ranking?.validation?.top_n || {};
   const marketHitRate = metrics.ranking?.validation?.market_hit_rate;
   const training = diagnostics.training || {};
+  const params = diagnostics.params || model.params || {};
 
   const modelName = $("diagnosticModelName");
   if (modelName) {
@@ -713,10 +885,10 @@ function renderDiagnostics(payload) {
   if (kpis) {
     kpis.innerHTML = model.model_id
       ? [
-          kpi("训练样本", text(metrics.sample_count)),
-          kpi("特征数", text(diagnostics.feature_count)),
-          kpi("验证 F1", percent(validation.f1 ?? metrics.f1)),
-          kpi("Top50", percent(top50?.hit_rate)),
+          kpi("训练样本", text(metrics.sample_count), "trainSamples"),
+          kpi("特征数", text(diagnostics.feature_count), "featureCount"),
+          kpi("验证 F1", percent(validation.f1 ?? metrics.f1), "validationF1"),
+          kpi("Top50", percent(top50?.hit_rate), "top50"),
         ].join("")
       : `<div class="empty">暂无激活模型</div>`;
   }
@@ -735,10 +907,10 @@ function renderDiagnostics(payload) {
   if (trainingScoreGrid) {
     trainingScoreGrid.innerHTML = model.model_id
       ? [
-          scoreCard("Accuracy", percent(validation.accuracy), "验证集整体判断", "neutral"),
-          scoreCard("Precision", percent(validation.precision), "预测为正时命中率", "neutral"),
-          scoreCard("Recall", percent(validation.recall), "正例覆盖能力", "neutral"),
-          scoreCard("F1", percent(validation.f1 ?? metrics.f1), "精确率与召回率平衡", "positive"),
+          scoreCard("Accuracy", percent(validation.accuracy), "验证集整体判断", "neutral", "accuracy"),
+          scoreCard("Precision", percent(validation.precision), "预测为正时命中率", "neutral", "precision"),
+          scoreCard("Recall", percent(validation.recall), "正例覆盖能力", "neutral", "recall"),
+          scoreCard("F1", percent(validation.f1 ?? metrics.f1), "精确率与召回率平衡", "positive", "validationF1"),
         ].join("")
       : `<div class="empty">暂无训练指标</div>`;
   }
@@ -746,9 +918,9 @@ function renderDiagnostics(payload) {
   const trainingBody = $("trainingMetricBody");
   if (trainingBody) {
     trainingBody.innerHTML = [
-      metricRow("Log Loss", decimal(validation.log_loss, 6)),
-      metricRow("验证样本", text(metrics.validation_sample_count)),
-      metricRow("正例率", percent(validation.positive_rate)),
+      metricRowHelp("Log Loss", decimal(validation.log_loss, 6), "logLoss"),
+      metricRowHelp("验证样本", text(metrics.validation_sample_count), "samples"),
+      metricRowHelp("正例率", percent(validation.positive_rate), "positiveRate"),
     ].join("");
   }
 
@@ -760,11 +932,23 @@ function renderDiagnostics(payload) {
   const processBody = $("trainingProcessBody");
   if (processBody) {
     processBody.innerHTML = [
-      metricRow("训练轮次", text(training.iterations)),
-      metricRow("最佳轮次", text(training.best_iteration)),
-      metricRow("最佳验证 Log Loss", decimal(training.best_validation_log_loss, 6)),
-      metricRow("非零权重", text(diagnostics.non_zero_weight_count)),
+      metricRowHelp("训练轮次", text(training.iterations), "iterations"),
+      metricRowHelp("最佳轮次", text(training.best_iteration), "bestIteration"),
+      metricRowHelp("最佳验证 Log Loss", decimal(training.best_validation_log_loss, 6), "logLoss"),
+      metricRowHelp("非零权重", text(diagnostics.non_zero_weight_count), "nonZeroWeights"),
     ].join("");
+  }
+
+  const paramBody = $("trainingParamBody");
+  if (paramBody) {
+    const rows = Object.entries(params || {});
+    paramBody.innerHTML = rows.length
+      ? rows
+          .map(([key, value]) =>
+            metricRowHelp(key, typeof value === "object" ? JSON.stringify(value) : text(value), paramHelpKey(key), "训练时传入的参数。")
+          )
+          .join("")
+      : `<div class="empty">暂无训练参数</div>`;
   }
 
   const weightList = $("featureWeightList");
@@ -941,8 +1125,106 @@ async function trainApproveActivate() {
   }
 }
 
+function backfillStartDate() {
+  const value = toTradeDate($("backfillStartInput")?.value);
+  if (value) {
+    return value;
+  }
+  const latest = state.overview?.workflow?.latest_market_date || state.overview?.workflow?.suggested_prediction_date || "";
+  return previousYearDate(latest) || "";
+}
+
+function backfillEndDate() {
+  return toTradeDate($("backfillEndInput")?.value);
+}
+
+async function backfillHistory() {
+  const buttons = ["backfillHistoryBtn"].map((id) => $(id)).filter(Boolean);
+  buttons.forEach((button) => {
+    button.disabled = true;
+  });
+  try {
+    const startDate = backfillStartDate();
+    if (!startDate) {
+      throw new Error("请选择回填开始日");
+    }
+    const body = {
+      start_date: startDate,
+      max_days: 260,
+    };
+    const endDate = backfillEndDate();
+    if (endDate) {
+      body.end_date = endDate;
+    }
+    showToast("正在回填历史日线");
+    const res = await fetch("/api/admin/history/backfill", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body),
+    });
+    const payload = await res.json();
+    if (!res.ok) {
+      throw new Error(payload.detail || `回填失败：${res.status}`);
+    }
+    showToast(`回填完成，新增 ${payload.fetched_days || 0} 天，缓存 ${payload.cached_days || 0} 天`);
+    await loadOverview({ silent: true });
+    return payload;
+  } catch (error) {
+    showToast(error.message || "回填失败");
+    throw error;
+  } finally {
+    buttons.forEach((button) => {
+      button.disabled = false;
+    });
+  }
+}
+
+async function runTrainingMatrix() {
+  const buttons = ["runTrainingMatrixBtn", "runTrainingMatrixBtnTraining", "runTrainingMatrixBtnPanel"]
+    .map((id) => $(id))
+    .filter(Boolean);
+  buttons.forEach((button) => {
+    button.disabled = true;
+  });
+  try {
+    showToast("正在多轮训练选优");
+    const res = await fetch("/api/admin/training-matrix/run", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        dataset_version: "market_cache_v1",
+        feature_sets: [$("featureSetInput")?.value || "short_swing_v2"],
+        label_sets: ["next_high_3pct_v1", "next_high_2pct_v1", "next_3d_high_3pct_v1"],
+        params: {validation_ratio: 0.2},
+        activate_best: true,
+        notes: "training matrix from admin",
+      }),
+    });
+    const payload = await res.json();
+    if (!res.ok) {
+      throw new Error(payload.detail || `多轮训练失败：${res.status}`);
+    }
+    const best = payload.best?.metrics_summary || {};
+    const suffix = best.top50_hit_rate !== undefined && best.top50_hit_rate !== null
+      ? `，Top50 ${Math.round(best.top50_hit_rate * 100)}%`
+      : "";
+    showToast(`已训练 ${payload.completed_count || 0} 个模型并上线最优${suffix}`);
+    await loadOverview({ silent: true });
+    setView("metrics");
+    return payload;
+  } catch (error) {
+    showToast(error.message || "多轮训练失败");
+    await loadOverview({ silent: true });
+    throw error;
+  } finally {
+    buttons.forEach((button) => {
+      button.disabled = false;
+    });
+  }
+}
+
 function predictionTradeDate() {
-  const value = $("predictionDateInput")?.value.trim();
+  const value = toTradeDate($("predictionDateInput")?.value);
   if (value) {
     return value;
   }
@@ -950,7 +1232,7 @@ function predictionTradeDate() {
 }
 
 function validationTradeDate() {
-  const value = $("validationDateInput")?.value.trim();
+  const value = toTradeDate($("validationDateInput")?.value);
   if (value) {
     return value;
   }
@@ -1100,6 +1382,7 @@ async function rollbackModel() {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
+  bindDatePickers();
   document.querySelectorAll(".nav-item").forEach((item) => {
     item.addEventListener("click", () => setView(item.dataset.view));
   });
@@ -1115,6 +1398,10 @@ window.addEventListener("DOMContentLoaded", () => {
   bindOptional("queueTrainBtnTraining", "click", queueTrainingRun);
   bindOptional("runQueuedBtn", "click", runFirstQueuedTraining);
   bindOptional("trainApproveActivateBtn", "click", trainApproveActivate);
+  bindOptional("backfillHistoryBtn", "click", backfillHistory);
+  bindOptional("runTrainingMatrixBtn", "click", runTrainingMatrix);
+  bindOptional("runTrainingMatrixBtnTraining", "click", runTrainingMatrix);
+  bindOptional("runTrainingMatrixBtnPanel", "click", runTrainingMatrix);
   bindOptional("approveCandidateBtn", "click", approveFirstCandidate);
   bindOptional("activateApprovedBtn", "click", activateFirstApproved);
   bindOptional("runPredictionBtn", "click", runPrediction);

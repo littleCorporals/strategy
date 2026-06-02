@@ -115,6 +115,24 @@ class TrainingRunRequest(BaseModel):
     notes: str = ""
 
 
+class HistoryBackfillRequest(BaseModel):
+    start_date: str = Field(min_length=8, max_length=8)
+    end_date: str | None = Field(default=None, min_length=8, max_length=8)
+    max_days: int = Field(default=260, ge=1, le=520)
+
+
+class TrainingMatrixRequest(BaseModel):
+    dataset_version: str = Field(default="market_cache_v1", min_length=1)
+    feature_sets: list[str] = Field(default_factory=lambda: ["short_swing_v2"])
+    label_sets: list[str] = Field(
+        default_factory=lambda: ["next_high_3pct_v1", "next_high_2pct_v1", "next_3d_high_3pct_v1"]
+    )
+    train_windows: list[dict[str, Any]] = Field(default_factory=list)
+    params: dict[str, Any] = Field(default_factory=dict)
+    activate_best: bool = False
+    notes: str = ""
+
+
 class ModelRegisterRequest(BaseModel):
     model_id: str | None = None
     name: str = Field(default="短线预测候选模型", min_length=1)
@@ -252,6 +270,34 @@ async def run_training(run_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/api/admin/history/backfill")
+async def backfill_history(payload: HistoryBackfillRequest) -> dict[str, Any]:
+    try:
+        return await model_pipeline.backfill_daily_history(
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            max_days=payload.max_days,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/api/admin/training-matrix/run")
+async def run_training_matrix(payload: TrainingMatrixRequest) -> dict[str, Any]:
+    try:
+        return await model_pipeline.run_training_matrix(
+            dataset_version=payload.dataset_version,
+            feature_sets=payload.feature_sets,
+            label_sets=payload.label_sets,
+            train_windows=payload.train_windows or None,
+            params=payload.params,
+            activate_best=payload.activate_best,
+            notes=payload.notes,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/api/admin/pipelines")

@@ -360,6 +360,118 @@ def test_training_run_executes_pipeline_and_registers_candidate_model(
     assert payload["pipeline"]["status"] == "completed"
 
 
+def test_history_backfill_fetches_missing_daily_rows(
+    isolated_app: tuple[TestClient, Path],
+    monkeypatch,
+) -> None:
+    client, _db_path = isolated_app
+
+    from app.services import market_data
+
+    calls: list[str] = []
+
+    async def fake_daily(**kwargs: Any) -> list[dict[str, Any]]:
+        trade_date = str(kwargs["trade_date"])
+        calls.append(trade_date)
+        return [
+            {
+                "ts_code": "000001.SZ",
+                "trade_date": trade_date,
+                "open": 10.0,
+                "high": 10.6,
+                "low": 9.8,
+                "close": 10.2,
+                "pre_close": 10.0,
+                "change": 0.2,
+                "pct_chg": 2.0,
+                "vol": 1000,
+                "amount": 10200,
+            }
+        ]
+
+    monkeypatch.setattr(market_data, "call_daily", fake_daily)
+
+    response = client.post(
+        "/api/admin/history/backfill",
+        json={"start_date": "20240102", "end_date": "20240103", "max_days": 5},
+    )
+    second = client.post(
+        "/api/admin/history/backfill",
+        json={"start_date": "20240102", "end_date": "20240103", "max_days": 5},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["fetched_days"] == 2
+    assert payload["row_count"] == 2
+    assert calls == ["20240102", "20240103"]
+    assert second.status_code == 200
+    assert second.json()["cached_days"] == 2
+    assert calls == ["20240102", "20240103"]
+
+
+def test_training_matrix_runs_multiple_labels_and_can_activate_best(
+    isolated_app: tuple[TestClient, Path],
+) -> None:
+    client, _db_path = isolated_app
+
+    from app.db import cache as db_cache
+
+    rows: list[dict[str, Any]] = []
+    for code_index, ts_code in enumerate(["000001.SZ", "000002.SZ", "000003.SZ", "000004.SZ"]):
+        base = 10 + code_index
+        for day in range(1, 16):
+            close = base + day * (0.08 + code_index * 0.02)
+            rows.append(
+                {
+                    "ts_code": ts_code,
+                    "trade_date": f"202401{day:02d}",
+                    "open": round(close - 0.05, 3),
+                    "high": round(close * (1.015 + (day % 4) * 0.008 + code_index * 0.002), 3),
+                    "low": round(close * 0.985, 3),
+                    "close": round(close, 3),
+                    "pre_close": round(close - 0.08, 3),
+                    "change": 0.08,
+                    "pct_chg": round(0.8 + (day % 5) * 0.15 + code_index * 0.08, 3),
+                    "vol": 1000 + day * 35 + code_index * 50,
+                    "amount": 10000 + day * 420 + code_index * 650,
+                }
+            )
+    db_cache.init_sync()
+    db_cache.save_rows_sync("daily", rows, complete=False)
+    for day in range(1, 16):
+        db_cache.mark_complete_sync("daily", f"202401{day:02d}", 4, "test")
+
+    response = client.post(
+        "/api/admin/training-matrix/run",
+        json={
+            "feature_sets": ["short_swing_v1"],
+            "label_sets": ["next_high_2pct_v1", "next_high_3pct_v1"],
+            "train_windows": [
+                {
+                    "name": "pytest_window",
+                    "train_start_date": "20240101",
+                    "train_end_date": "20240115",
+                }
+            ],
+            "params": {"validation_ratio": 0.25, "max_iter": 40, "patience": 8},
+            "activate_best": True,
+            "notes": "pytest matrix",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["completed_count"] == 2
+    assert payload["failed_count"] == 0
+    assert payload["best"]["model"]["status"] == "active"
+    assert payload["active_model"]["model_id"] == payload["best"]["model"]["model_id"]
+    assert payload["best"]["metrics_summary"]["top50_hit_rate"] is not None
+    assert {item["label_set"] for item in payload["items"]} == {"next_high_2pct_v1", "next_high_3pct_v1"}
+
+
 def test_multi_day_label_builds_samples() -> None:
     from modeling.datasets.supervised import build_supervised_samples
 

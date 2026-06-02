@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +18,255 @@ from modeling.training.baseline import train_baseline_model
 
 
 MODEL_ARTIFACT_DIR = DATA_DIR / "models"
+DEFAULT_MATRIX_LABEL_SETS = ("next_high_3pct_v1", "next_high_2pct_v1", "next_3d_high_3pct_v1")
+
+
+def _parse_yyyymmdd(value: str | None, field_name: str) -> date:
+    text = str(value or "").strip()
+    if len(text) != 8 or not text.isdigit():
+        raise ValueError(f"{field_name} 必须是 YYYYMMDD 格式")
+    try:
+        return datetime.strptime(text, "%Y%m%d").date()
+    except ValueError as exc:
+        raise ValueError(f"{field_name} 不是有效日期") from exc
+
+
+def _weekday_trade_dates(start: date, end: date) -> list[str]:
+    days: list[str] = []
+    current = start
+    while current <= end:
+        if current.weekday() < 5:
+            days.append(current.strftime("%Y%m%d"))
+        current += timedelta(days=1)
+    return days
+
+
+def _top50_score(metrics: dict[str, Any]) -> tuple[float, float, float, int]:
+    validation_ranking = ((metrics.get("ranking") or {}).get("validation") or {})
+    top50 = ((validation_ranking.get("top_n") or {}).get("50") or {})
+    validation = metrics.get("validation") or {}
+    return (
+        float(top50.get("lift") or 0.0),
+        float(top50.get("hit_rate") or 0.0),
+        float(validation.get("f1") or metrics.get("f1") or 0.0),
+        int(metrics.get("validation_sample_count") or 0),
+    )
+
+
+def _metric_summary(metrics: dict[str, Any]) -> dict[str, Any]:
+    validation_ranking = ((metrics.get("ranking") or {}).get("validation") or {})
+    top50 = ((validation_ranking.get("top_n") or {}).get("50") or {})
+    return {
+        "sample_count": metrics.get("sample_count"),
+        "validation_sample_count": metrics.get("validation_sample_count"),
+        "f1": metrics.get("f1"),
+        "market_hit_rate": validation_ranking.get("market_hit_rate"),
+        "top50_hit_rate": top50.get("hit_rate"),
+        "top50_lift": top50.get("lift"),
+        "top50_avg_window_high_pct": top50.get("avg_window_high_pct"),
+    }
+
+
+async def backfill_daily_history(
+    *,
+    start_date: str,
+    end_date: str | None = None,
+    max_days: int = 260,
+) -> dict[str, Any]:
+    start = _parse_yyyymmdd(start_date, "start_date")
+    requested_end = _parse_yyyymmdd(end_date or market_data.today_trade_date(), "end_date")
+    fetchable_end = _parse_yyyymmdd(
+        market_data.latest_fetchable_trade_date(requested_end.strftime("%Y%m%d")),
+        "end_date",
+    )
+    if start > fetchable_end:
+        raise ValueError("start_date 不能晚于可回填的 end_date")
+
+    days = _weekday_trade_dates(start, fetchable_end)
+    max_days = min(520, max(1, int(max_days or 1)))
+    if len(days) > max_days:
+        raise ValueError(f"本次最多回填 {max_days} 个工作日，请缩小日期范围或调大 max_days")
+
+    items: list[dict[str, Any]] = []
+    cached_days = 0
+    fetched_days = 0
+    empty_days = 0
+    failed_days = 0
+    total_rows = 0
+    for trade_date in days:
+        state = await market_cache.complete_state("daily", trade_date)
+        if state:
+            row_count = int(state["row_count"] or 0)
+            total_rows += max(0, row_count)
+            if row_count > 0:
+                cached_days += 1
+                status = "cached"
+            else:
+                empty_days += 1
+                status = "empty_cached"
+            items.append({"trade_date": trade_date, "status": status, "row_count": row_count})
+            continue
+
+        try:
+            rows = await market_data.daily_rows_raw(trade_date, market_data.HISTORY_FIELDS)
+        except Exception as exc:  # keep partial progress visible to the admin caller
+            failed_days += 1
+            items.append({"trade_date": trade_date, "status": "failed", "row_count": 0, "error": str(exc)})
+            break
+
+        row_count = len(rows)
+        total_rows += row_count
+        if row_count:
+            fetched_days += 1
+            status = "fetched"
+        else:
+            empty_days += 1
+            status = "empty"
+        items.append({"trade_date": trade_date, "status": status, "row_count": row_count})
+
+    return {
+        "ok": failed_days == 0,
+        "start_date": start.strftime("%Y%m%d"),
+        "end_date": fetchable_end.strftime("%Y%m%d"),
+        "requested_weekdays": len(days),
+        "processed_days": len(items),
+        "cached_days": cached_days,
+        "fetched_days": fetched_days,
+        "empty_days": empty_days,
+        "failed_days": failed_days,
+        "row_count": total_rows,
+        "items": items,
+    }
+
+
+async def default_training_windows(max_windows: int = 1) -> list[dict[str, Any]]:
+    rows = await market_cache.fetch_rows("daily", fields="trade_date")
+    dates = sorted({str(row.get("trade_date") or "") for row in rows if row.get("trade_date")})
+    if not dates:
+        return [{"name": "all_cached", "train_start_date": None, "train_end_date": None}]
+
+    windows: list[dict[str, Any]] = [
+        {
+            "name": "all_cached",
+            "train_start_date": dates[0],
+            "train_end_date": dates[-1],
+        }
+    ]
+    for size in (120, 60):
+        if len(dates) > size:
+            windows.append(
+                {
+                    "name": f"recent_{size}_trade_days",
+                    "train_start_date": dates[-size],
+                    "train_end_date": dates[-1],
+                }
+            )
+    return windows[: max(1, max_windows)]
+
+
+async def run_training_matrix(
+    *,
+    dataset_version: str = "market_cache_v1",
+    feature_sets: list[str] | None = None,
+    label_sets: list[str] | None = None,
+    train_windows: list[dict[str, Any]] | None = None,
+    params: dict[str, Any] | None = None,
+    activate_best: bool = False,
+    notes: str = "",
+) -> dict[str, Any]:
+    selected_features = [item for item in (feature_sets or ["short_swing_v2"]) if item]
+    selected_labels = [item for item in (label_sets or list(DEFAULT_MATRIX_LABEL_SETS)) if item]
+    windows = train_windows or await default_training_windows()
+    params = params or {}
+    if not selected_features:
+        raise ValueError("至少需要一个 feature_set")
+    if not selected_labels:
+        raise ValueError("至少需要一个 label_set")
+    if not windows:
+        raise ValueError("至少需要一个训练窗口")
+
+    results: list[dict[str, Any]] = []
+    for window in windows:
+        window_name = str(window.get("name") or "window")
+        train_start_date = window.get("train_start_date")
+        train_end_date = window.get("train_end_date")
+        for feature_set in selected_features:
+            for label_set in selected_labels:
+                run = await model_repo.create_training_run(
+                    {
+                        "dataset_version": dataset_version,
+                        "feature_set": feature_set,
+                        "label_set": label_set,
+                        "train_start_date": train_start_date,
+                        "train_end_date": train_end_date,
+                        "params": params,
+                        "notes": notes or f"training matrix {window_name}",
+                    }
+                )
+                try:
+                    trained = await run_training_pipeline(str(run["run_id"]))
+                    metrics = trained["run"].get("metrics") or {}
+                    results.append(
+                        {
+                            "ok": True,
+                            "window": window_name,
+                            "feature_set": feature_set,
+                            "label_set": label_set,
+                            "run": trained["run"],
+                            "model": trained["model"],
+                            "score": _top50_score(metrics),
+                            "metrics_summary": _metric_summary(metrics),
+                        }
+                    )
+                except Exception as exc:
+                    results.append(
+                        {
+                            "ok": False,
+                            "window": window_name,
+                            "feature_set": feature_set,
+                            "label_set": label_set,
+                            "run": await model_repo.get_training_run(str(run["run_id"])) or run,
+                            "error": str(exc),
+                        }
+                    )
+
+    completed = [item for item in results if item.get("ok")]
+    best = max(completed, key=lambda item: tuple(item.get("score") or (0.0, 0.0, 0.0, 0))) if completed else None
+    active = await model_repo.active_model()
+    if best and activate_best:
+        model_id = str((best.get("model") or {}).get("model_id") or "")
+        if model_id:
+            await model_repo.approve_model(model_id, reason="training matrix best candidate")
+            await model_repo.activate_model(model_id)
+            best["model"] = await model_repo.get_model(model_id) or best["model"]
+            active = await model_repo.active_model()
+
+    pipeline = await model_repo.create_pipeline_run(
+        {
+            "pipeline_type": "training_matrix",
+            "status": "completed" if completed else "failed",
+            "payload": {
+                "completed_count": len(completed),
+                "failed_count": len(results) - len(completed),
+                "best_model_id": (best.get("model") or {}).get("model_id") if best else None,
+                "best_score": best.get("score") if best else None,
+                "activate_best": activate_best,
+                "windows": windows,
+                "feature_sets": selected_features,
+                "label_sets": selected_labels,
+            },
+            "error": "" if completed else "training matrix produced no completed models",
+        }
+    )
+    return {
+        "ok": bool(completed),
+        "completed_count": len(completed),
+        "failed_count": len(results) - len(completed),
+        "best": best,
+        "active_model": active,
+        "items": results,
+        "pipeline": pipeline,
+    }
 
 
 async def run_training_pipeline(run_id: str) -> dict[str, Any]:

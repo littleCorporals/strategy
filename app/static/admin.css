@@ -186,12 +186,12 @@ a.back-link:hover {
   min-width: 0;
   height: 100vh;
   overflow: auto;
-  padding: 24px;
+  padding: 24px clamp(16px, 2vw, 28px);
 }
 
 .view {
   display: none;
-  max-width: 1440px;
+  max-width: 1520px;
   margin: 0 auto;
 }
 
@@ -363,6 +363,40 @@ a.back-link:hover {
   margin-top: 14px;
 }
 
+.training-control-stack .page-card + .page-card,
+.metric-main-stack .page-card + .page-card,
+.metric-side-stack .page-card + .page-card,
+.definition-grid .page-card + .page-card {
+  margin-top: 0;
+}
+
+.training-workbench {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.training-control-stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.8fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.training-table-card {
+  min-height: 0;
+}
+
+.training-table-card .table-wrap {
+  max-height: calc(100vh - 366px);
+}
+
+.training-table-card table {
+  min-width: 1040px;
+  table-layout: auto;
+}
+
 .section-title {
   display: flex;
   align-items: center;
@@ -409,6 +443,18 @@ td {
   overflow-wrap: anywhere;
 }
 
+td strong,
+td small {
+  display: block;
+}
+
+td small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 th {
   position: sticky;
   top: 0;
@@ -432,6 +478,130 @@ tr:last-child td {
   min-width: 136px;
 }
 
+.compact-metrics {
+  min-width: 86px;
+  display: grid;
+  gap: 4px;
+}
+
+.compact-metrics span {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.compact-metrics b {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.help-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.field .help-label,
+th .help-label,
+td .help-label,
+.metric-kpi .help-label,
+.score-card .help-label,
+.metric-detail-item .help-label,
+.ranking-summary-item .help-label,
+.compact-metrics .help-label {
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+}
+
+.help-tip {
+  position: relative;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #cfd8d3;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: help;
+  outline: none;
+}
+
+.field .help-tip,
+th .help-tip,
+td .help-tip,
+.metric-kpi .help-tip,
+.score-card .help-tip,
+.metric-detail-item .help-tip,
+.ranking-summary-item .help-tip,
+.compact-metrics .help-tip {
+  display: inline-flex;
+}
+
+.help-tip:focus-visible {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(25, 111, 86, 0.16);
+}
+
+.help-popover {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  z-index: 20;
+  width: min(260px, 72vw);
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #17211d;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+  white-space: normal;
+  box-shadow: 0 10px 24px rgba(18, 24, 21, 0.18);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.help-tip:hover .help-popover,
+.help-tip:focus .help-popover {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.help-popover::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  width: 8px;
+  height: 8px;
+  background: #17211d;
+  transform: translate(-50%, -4px) rotate(45deg);
+}
+
+th .help-popover {
+  top: calc(100% + 8px);
+  bottom: auto;
+}
+
+th .help-popover::after {
+  top: auto;
+  bottom: 100%;
+  transform: translate(-50%, 4px) rotate(45deg);
+}
+
 .form-card {
   max-width: 520px;
   display: grid;
@@ -452,6 +622,15 @@ tr:last-child td {
   border-bottom: 1px solid var(--line-soft);
 }
 
+.training-control-stack .form-card,
+.training-control-stack .field-grid {
+  grid-template-columns: 1fr;
+}
+
+.training-config-card .form-card {
+  border-bottom: 0;
+}
+
 .field {
   display: grid;
   gap: 6px;
@@ -462,6 +641,14 @@ tr:last-child td {
   grid-template-columns: repeat(2, minmax(180px, 1fr));
   gap: 14px;
   padding-top: 12px;
+}
+
+.history-card .field-grid {
+  padding: 14px 14px 0;
+}
+
+.history-card .form-actions {
+  padding: 14px;
 }
 
 .workflow-summary {
@@ -633,7 +820,7 @@ tr:last-child td {
 
 .metric-workbench {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.55fr);
+  grid-template-columns: minmax(0, 1.38fr) minmax(340px, 0.62fr);
   gap: 14px;
   align-items: start;
 }
@@ -1360,6 +1547,8 @@ tr:last-child td {
 
   .summary-grid,
   .steps,
+  .training-workbench,
+  .training-control-stack,
   .definition-grid,
   .metric-hero,
   .metric-chart-grid,
@@ -1449,6 +1638,10 @@ tr:last-child td {
 
   .table-wrap {
     max-height: none;
+  }
+
+  .training-table-card {
+    min-height: 0;
   }
 
   .page-card .form-card {

@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>A股策略后台</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260529-admin-console-9" />
-    <script src="/static/app.js?v=20260529-admin-console-9" defer></script>
+    <link rel="stylesheet" href="/static/styles.css?v=20260602-date-picker-1" />
+    <script src="/static/app.js?v=20260602-date-picker-1" defer></script>
   </head>
   <body>
     <main class="admin-shell">
@@ -89,98 +89,102 @@
         </header>
 
         <section class="view active" data-view-panel="overview">
-          <section class="overview">
-            <section class="decision-panel" id="marketAnswer">
-              <div>
-                <span id="dataDateLabel">等待交易日</span>
-                <h3 id="actionLabel">等待数据</h3>
-              </div>
-              <div class="decision-copy">
-                <strong id="actionTag">--</strong>
-                <p id="actionReason">打开后会自动读取最近可用交易日。</p>
-              </div>
-            </section>
-
-            <section class="metric-strip" aria-label="市场概览">
-              <div class="metric up">
-                <span>上涨家数</span>
-                <strong id="upMetric">--</strong>
-              </div>
-              <div class="metric down">
-                <span>下跌家数</span>
-                <strong id="downMetric">--</strong>
-              </div>
-              <div class="metric">
-                <span>平均涨跌</span>
-                <strong id="avgMetric">--</strong>
-              </div>
-              <div class="metric">
-                <span>成交额</span>
-                <strong id="amountMetric">--</strong>
-              </div>
-              <div class="metric breadth">
-                <span id="breadthText">市场宽度 --</span>
-                <b><i id="breadthBar"></i></b>
-              </div>
-            </section>
-          </section>
-
-          <section class="dashboard-grid">
-            <section class="panel preview-panel">
-              <header class="panel-head">
+          <section class="view-workspace overview-workspace">
+            <section class="overview">
+              <section class="decision-panel" id="marketAnswer">
                 <div>
-                  <span>Candidates</span>
-                  <h3>今日候选概览</h3>
+                  <span id="dataDateLabel">等待交易日</span>
+                  <h3 id="actionLabel">等待数据</h3>
                 </div>
-                <button class="ghost-link" type="button" data-view-jump="candidates">打开候选</button>
-              </header>
-              <div class="candidate-list compact-list" id="overviewCandidateList" aria-label="候选概览"></div>
+                <div class="decision-copy">
+                  <strong id="actionTag">--</strong>
+                  <p id="actionReason">打开后会自动读取最近可用交易日。</p>
+                </div>
+              </section>
+
+              <section class="metric-strip" aria-label="市场概览">
+                <div class="metric up">
+                  <span>上涨家数</span>
+                  <strong id="upMetric">--</strong>
+                </div>
+                <div class="metric down">
+                  <span>下跌家数</span>
+                  <strong id="downMetric">--</strong>
+                </div>
+                <div class="metric">
+                  <span>平均涨跌</span>
+                  <strong id="avgMetric">--</strong>
+                </div>
+                <div class="metric">
+                  <span>成交额</span>
+                  <strong id="amountMetric">--</strong>
+                </div>
+                <div class="metric breadth">
+                  <span id="breadthText">市场宽度 --</span>
+                  <b><i id="breadthBar"></i></b>
+                </div>
+              </section>
             </section>
 
-            <section class="panel preview-panel">
-              <header class="panel-head">
-                <div>
-                  <span>Industry</span>
-                  <h3>行业强弱</h3>
-                </div>
-                <button class="ghost-link" type="button" data-view-jump="industry">打开行业</button>
-              </header>
-              <div class="industry-list compact-list" id="overviewIndustryList"></div>
+            <section class="dashboard-grid">
+              <section class="panel preview-panel">
+                <header class="panel-head">
+                  <div>
+                    <span>Candidates</span>
+                    <h3>今日候选概览</h3>
+                  </div>
+                  <button class="ghost-link" type="button" data-view-jump="candidates">打开候选</button>
+                </header>
+                <div class="candidate-list compact-list" id="overviewCandidateList" aria-label="候选概览"></div>
+              </section>
+
+              <section class="panel preview-panel">
+                <header class="panel-head">
+                  <div>
+                    <span>Industry</span>
+                    <h3>行业强弱</h3>
+                  </div>
+                  <button class="ghost-link" type="button" data-view-jump="industry">打开行业</button>
+                </header>
+                <div class="industry-list compact-list" id="overviewIndustryList"></div>
+              </section>
             </section>
           </section>
         </section>
 
         <section class="view" data-view-panel="candidates">
-          <section class="panel table-panel">
-            <header class="panel-head">
-              <div>
-                <span>Candidates</span>
-                <h3>候选列表</h3>
+          <section class="view-workspace list-workspace">
+            <section class="panel table-panel">
+              <header class="panel-head">
+                <div>
+                  <span>Candidates</span>
+                  <h3>候选列表</h3>
+                </div>
+                <p id="candidateInfo">等待行情</p>
+              </header>
+              <div class="segments" role="tablist" aria-label="候选分类">
+                <button class="active" data-bucket="priority" type="button">优先</button>
+                <button data-bucket="pullback" type="button">回踩</button>
+                <button data-bucket="active" type="button">活跃</button>
+                <button data-bucket="avoid" type="button">回避</button>
               </div>
-              <p id="candidateInfo">等待行情</p>
-            </header>
-            <div class="segments" role="tablist" aria-label="候选分类">
-              <button class="active" data-bucket="priority" type="button">优先</button>
-              <button data-bucket="pullback" type="button">回踩</button>
-              <button data-bucket="active" type="button">活跃</button>
-              <button data-bucket="avoid" type="button">回避</button>
-            </div>
-            <div class="candidate-table">
-              <div class="candidate-head" aria-hidden="true">
-                <span>股票</span>
-                <span>行业</span>
-                <span>涨跌幅</span>
-                <span>成交额</span>
-                <span>评分</span>
-                <span>判断</span>
+              <div class="candidate-table">
+                <div class="candidate-head" aria-hidden="true">
+                  <span>股票</span>
+                  <span>行业</span>
+                  <span>涨跌幅</span>
+                  <span>成交额</span>
+                  <span>评分</span>
+                  <span>判断</span>
+                </div>
+                <div class="candidate-list" id="candidateList" role="table" aria-label="候选股票"></div>
               </div>
-              <div class="candidate-list" id="candidateList" role="table" aria-label="候选股票"></div>
-            </div>
+            </section>
           </section>
         </section>
 
         <section class="view" data-view-panel="stock">
-          <section class="stock-view-grid">
+          <section class="view-workspace stock-view-grid">
             <section class="stock-stack stock-left">
               <section class="panel selected-panel">
                 <header class="panel-head">
@@ -311,25 +315,27 @@
         </section>
 
         <section class="view" data-view-panel="industry">
-          <section class="panel">
-            <header class="panel-head">
-              <div>
-                <span>Industry</span>
-                <h3>行业趋势</h3>
-              </div>
-              <p id="industryInfo">等待行情</p>
-            </header>
-            <div class="industry-list industry-board" id="industryList"></div>
+          <section class="view-workspace">
+            <section class="panel industry-panel">
+              <header class="panel-head">
+                <div>
+                  <span>Industry</span>
+                  <h3>行业趋势</h3>
+                </div>
+                <p id="industryInfo">等待行情</p>
+              </header>
+              <div class="industry-list industry-board" id="industryList"></div>
+            </section>
           </section>
         </section>
 
         <section class="view" data-view-panel="tools">
-          <section class="tools-grid">
+          <section class="view-workspace tools-grid">
             <section class="panel tool-panel">
               <header class="panel-head">
                 <div>
                   <span>Tools</span>
-                  <h3>数据工具</h3>
+                  <h3>数据查询</h3>
                 </div>
               </header>
               <div class="tool-actions">
@@ -343,7 +349,7 @@
                 </button>
               </div>
             </section>
-            <section class="panel">
+            <section class="panel tool-panel">
               <header class="panel-head">
                 <div>
                   <span>Export</span>
