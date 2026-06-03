@@ -707,6 +707,27 @@ async def validation_summary(trade_date: str | None = None) -> dict[str, Any]:
     return {"items": [dict(row) for row in rows]}
 
 
+async def latest_validation_payload(model_id: str | None = None) -> dict[str, Any] | None:
+    await ensure()
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT payload_json
+            FROM ml_pipeline_runs
+            WHERE pipeline_type = 'validation'
+              AND status = 'completed'
+            ORDER BY trade_date DESC, created_at DESC
+            LIMIT 100
+            """
+        ).fetchall()
+    for row in rows:
+        payload = json.loads(row["payload_json"] or "{}")
+        if model_id and str(payload.get("model_id") or "") != str(model_id):
+            continue
+        return payload
+    return None
+
+
 async def model_performance_overview() -> dict[str, Any]:
     await ensure()
     with connect() as conn:

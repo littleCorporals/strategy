@@ -20,13 +20,20 @@ const state = {
   history: [],
   selected: null,
   activeView: "overview",
-  activeBucket: "priority",
+  activeBucket: "mlLate",
   watchlist: [],
   basicMap: {},
   recommendations: [],
+  mlLateSessionRecommendations: [],
+  lateSessionRecommendations: [],
+  modelReference: null,
   industryTrends: [],
   recommendationStatus: "idle",
   recommendationError: "",
+  mlLateSessionStatus: "idle",
+  mlLateSessionError: "",
+  lateSessionStatus: "idle",
+  lateSessionError: "",
   tradeDate: "",
   dataSource: "",
   loadError: "",
@@ -414,6 +421,40 @@ function stockTitle(row) {
   return row.name ? `${row.name} ${row.ts_code}` : row.ts_code;
 }
 
+function plainStockCode(row) {
+  const match = String(row?.ts_code || "").match(/\d{6}/);
+  return match ? match[0] : "";
+}
+
+function baiduSearchUrl(row) {
+  const code = plainStockCode(row);
+  if (code) return `https://gushitong.baidu.com/stock/ab-${code}`;
+  const query = `${stockTitle(row)} 股票`;
+  return `https://www.baidu.com/s?wd=${encodeURIComponent(query)}`;
+}
+
+function openBaiduSearch(row) {
+  if (!row) {
+    showToast("先选择一只股票");
+    return;
+  }
+  window.open(baiduSearchUrl(row), "_blank", "noopener,noreferrer");
+}
+
+function stockRowSearchLink(row) {
+  const link = el(
+    "a",
+    {
+      className: "baidu-link",
+      href: baiduSearchUrl(row),
+      title: `打开百度股市通：${stockTitle(row)}`,
+    },
+    [el("i", { dataset: { lucide: "search" } }), el("span", { text: "实时" })],
+  );
+  link.addEventListener("click", (event) => event.stopPropagation());
+  return link;
+}
+
 function candidateName(row) {
   return row?.name || row?.ts_code || "--";
 }
@@ -422,6 +463,56 @@ function stockSubTitle(row) {
   if (!row) return "";
   const parts = [row.industry, row.area].filter(Boolean);
   return parts.length ? parts.join(" / ") : "行业信息待补充";
+}
+
+function rowDisplayPct(row) {
+  return row?.late_session?.quote?.pct_chg ?? row?.pct_chg;
+}
+
+function rowDisplayAmount(row) {
+  return row?.late_session?.quote?.amount_yi !== undefined && row?.late_session?.quote?.amount_yi !== null
+    ? `${formatNumber(row.late_session.quote.amount_yi, 2)}亿`
+    : formatThousandYuan(row.amount);
+}
+
+function rowScore(row) {
+  return row?.late_session?.rank_score ?? row?.score;
+}
+
+function shortModelId(modelId) {
+  const value = String(modelId || "");
+  if (!value) return "--";
+  return value.length > 18 ? `${value.slice(0, 10)}...${value.slice(-6)}` : value;
+}
+
+function modelProbability(row) {
+  const probability = numberValue(row?.probability);
+  return probability === null ? "--" : formatPct(probability * 100);
+}
+
+function modelScoreCell(row) {
+  const rank = row?.ml_rank || row?.late_session?.model_rank;
+  return el("span", { className: "score-cell" }, [
+    el("strong", { text: formatNumber(rowScore(row), 1) }),
+    el("small", { text: rank ? `模型#${rank} / ${modelProbability(row)}` : "规则分" }),
+  ]);
+}
+
+function modelDetailText(row) {
+  const rank = row?.ml_rank || row?.late_session?.model_rank;
+  if (!rank && row?.probability === undefined) return "";
+  return `模型#${rank || "--"} / 概率 ${modelProbability(row)}`;
+}
+
+function rowSignalText(row) {
+  if (row?.late_session) {
+    const quote = row.late_session.quote || {};
+    const price = quote.price ? `现价 ${formatNumber(quote.price, 2)}` : "实时价 --";
+    return [modelDetailText(row), `${row.late_session.action} / ${price}`, row.late_session.reason]
+      .filter(Boolean)
+      .join(" / ");
+  }
+  return row.recommend_reason || row.signal || stockSubTitle(row);
 }
 
 function nextDayText(row) {
@@ -469,8 +560,20 @@ function applyBasicToRows() {
     score: row.score,
     signal: row.signal,
   }));
+  state.mlLateSessionRecommendations = state.mlLateSessionRecommendations.map((row) => ({
+    ...mergeBasic(row),
+    score: row.score,
+    signal: row.signal,
+  }));
+  state.lateSessionRecommendations = state.lateSessionRecommendations.map((row) => ({
+    ...mergeBasic(row),
+    score: row.score,
+    signal: row.signal,
+  }));
   state.selected =
     state.recommendations.find((row) => row.ts_code === selectedCode) ||
+    state.mlLateSessionRecommendations.find((row) => row.ts_code === selectedCode) ||
+    state.lateSessionRecommendations.find((row) => row.ts_code === selectedCode) ||
     state.rows.find((row) => row.ts_code === selectedCode) ||
     state.selected;
   renderCandidates();
@@ -577,6 +680,12 @@ function rowBucket(bucket) {
     }
     return [];
   }
+  if (bucket === "late") {
+    return [...state.lateSessionRecommendations].sort((a, b) => (numberValue(rowScore(b)) ?? 0) - (numberValue(rowScore(a)) ?? 0));
+  }
+  if (bucket === "mlLate") {
+    return [...state.mlLateSessionRecommendations].sort((a, b) => (numberValue(rowScore(b)) ?? 0) - (numberValue(rowScore(a)) ?? 0));
+  }
   if (bucket === "pullback") {
     return (recommended.length ? recommended : rows)
       .filter((row) => {
@@ -599,19 +708,32 @@ function emptyCandidateMessage() {
   const messages = {
     loading: "候选池正在计算，会先读取行情、指标和次日验证。",
     error: `推荐池失败：${state.recommendationError || "请稍后刷新"}。可以切到“活跃”看全市场。`,
+    mlLateLoading: "模型尾盘正在读取 ML 预测并叠加实时风险闸门。",
+    mlLateError: `模型尾盘失败：${state.mlLateSessionError || "请稍后刷新"}。`,
+    mlLateIdle: "点击“模型尾盘”后会从模型 Top500 里剔除走弱、过热、低成交和 T+1 追高风险。",
+    lateLoading: "尾盘候选正在叠加实时行情和 T+1 买点判断。",
+    lateError: `尾盘候选失败：${state.lateSessionError || "请稍后刷新"}。`,
+    lateIdle: "点击“尾盘”后会用实时行情复核今天是否还能买。",
     done: "当前交易日没有股票满足这个分类。",
     idle: "等待行情数据。",
   };
+  if (state.activeBucket === "mlLate" && state.mlLateSessionStatus === "loading") return messages.mlLateLoading;
+  if (state.activeBucket === "mlLate" && state.mlLateSessionStatus === "error") return messages.mlLateError;
+  if (state.activeBucket === "mlLate" && state.mlLateSessionStatus !== "done") return messages.mlLateIdle;
+  if (state.activeBucket === "late" && state.lateSessionStatus === "loading") return messages.lateLoading;
+  if (state.activeBucket === "late" && state.lateSessionStatus === "error") return messages.lateError;
+  if (state.activeBucket === "late" && state.lateSessionStatus !== "done") return messages.lateIdle;
   return messages[state.recommendationStatus] || messages.idle;
 }
 
 function candidateButton(row, { compact = false } = {}) {
   const nextText = nextDayText(row);
-  const rowButton = el("button", {
+  const rowButton = el("div", {
     className: `${compact ? "compact-row" : "candidate-row"}${row.ts_code === state.selected?.ts_code ? " selected" : ""}`,
-    type: "button",
     title: [row.recommend_reason || row.signal || "", conditionText(row), nextText].filter(Boolean).join(" / "),
   });
+  rowButton.setAttribute("role", "button");
+  rowButton.tabIndex = 0;
   const stock = el("span", { className: "candidate-stock" }, [
     el("strong", { text: candidateName(row) }),
     el("small", { text: row.ts_code || "--" }),
@@ -620,19 +742,25 @@ function candidateButton(row, { compact = false } = {}) {
     rowButton.append(
       stock,
       el("span", { className: "muted-cell", text: row.industry || row.area || "--" }),
-      el("strong", { className: quoteClass(row.pct_chg), text: formatPct(row.pct_chg) }),
+      el("strong", { className: quoteClass(rowDisplayPct(row)), text: formatPct(rowDisplayPct(row)) }),
     );
   } else {
     rowButton.append(
       stock,
       el("span", { className: "muted-cell", text: row.industry || row.area || "--" }),
-      el("span", { className: quoteClass(row.pct_chg), text: formatPct(row.pct_chg) }),
-      el("span", { text: formatThousandYuan(row.amount) }),
-      el("span", { text: formatNumber(row.score, 1) }),
-      el("span", { className: "signal-cell", text: row.recommend_reason || row.signal || stockSubTitle(row) }),
+      el("span", { className: quoteClass(rowDisplayPct(row)), text: formatPct(rowDisplayPct(row)) }),
+      el("span", { text: rowDisplayAmount(row) }),
+      modelScoreCell(row),
+      el("span", { className: "signal-cell", text: rowSignalText(row) }),
+      stockRowSearchLink(row),
     );
   }
   rowButton.addEventListener("click", () => selectStock(row));
+  rowButton.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    selectStock(row);
+  });
   return rowButton;
 }
 
@@ -649,15 +777,68 @@ function renderOverviewCandidates(rows) {
   els.overviewCandidateList.appendChild(fragment);
 }
 
+function metricText(value, { pct = false, digits = 2 } = {}) {
+  const num = numberValue(value);
+  if (num === null) return "--";
+  return pct ? formatPct(num * 100) : formatNumber(num, digits);
+}
+
+function renderModelReference() {
+  if (!els.modelReference) return;
+  clearNode(els.modelReference);
+  if (state.activeBucket !== "mlLate") {
+    els.modelReference.hidden = true;
+    return;
+  }
+  els.modelReference.hidden = false;
+  const ref = state.modelReference;
+  if (!ref) {
+    els.modelReference.appendChild(emptyNode("模型参考加载中", "model-reference-empty"));
+    return;
+  }
+  const validation = ref.validation || {};
+  const fit = ref.fit || {};
+  const ranking = ref.ranking_validation || {};
+  const top50 = ranking.top50 || {};
+  const latest = ref.latest_prediction_validation || {};
+  const latestTop50 = latest.top50 || {};
+  const latestText = latest.trade_date
+    ? `最近验证 ${displayTradeDate(latest.trade_date)} -> ${displayTradeDate(latest.next_trade_date || "")}：全量 ${metricText(latest.hit_rate, { pct: true })}，Top50 ${metricText(latestTop50.hit_rate, { pct: true })}，市场 ${metricText(latest.market_hit_rate, { pct: true })}。`
+    : "最近预测验证暂无记录。";
+  els.modelReference.append(
+    el("div", { className: "model-reference-main" }, [
+      el("span", { text: "Active Model" }),
+      el("strong", { text: `${shortModelId(ref.model_id)} / ${ref.feature_set || "--"} / ${ref.label_set || "--"}` }),
+      el("p", { text: ref.objective_note || "模型只作为候选召回参考。" }),
+    ]),
+    el("div", { className: "model-reference-metrics" }, [
+      el("div", {}, [el("span", { text: "验证 F1" }), el("strong", { text: metricText(validation.f1, { pct: true }) })]),
+      el("div", {}, [el("span", { text: "Accuracy" }), el("strong", { text: metricText(validation.accuracy, { pct: true }) })]),
+      el("div", {}, [el("span", { text: "LogLoss" }), el("strong", { text: metricText(validation.log_loss, { digits: 4 }) })]),
+      el("div", {}, [el("span", { text: "验证 Top50" }), el("strong", { text: metricText(top50.hit_rate, { pct: true }) })]),
+      el("div", {}, [el("span", { text: "市场基准" }), el("strong", { text: metricText(ranking.market_hit_rate, { pct: true }) })]),
+      el("div", {}, [el("span", { text: "样本/验证" }), el("strong", { text: `${text(ref.sample_count)} / ${text(ref.validation_sample_count)}` })]),
+      el("div", {}, [el("span", { text: "拟合差" }), el("strong", { text: metricText(fit.log_loss_gap, { digits: 4 }) })]),
+      el("div", {}, [el("span", { text: "最近 Top50" }), el("strong", { text: metricText(latestTop50.hit_rate, { pct: true }) })]),
+    ]),
+    el("p", { className: "model-reference-note", text: `${latestText} ${fit.note || ""}` }),
+  );
+}
+
 function renderCandidates() {
   const allRows = rowBucket(state.activeBucket);
   const rows = allRows.slice(0, state.candidateVisible);
   if (!state.rows.length) setText("candidateInfo", "等待行情");
   else if (state.recommendationStatus === "loading") setText("candidateInfo", `计算中 / ${state.rows.length} 条`);
+  else if (state.activeBucket === "mlLate" && state.mlLateSessionStatus === "loading") setText("candidateInfo", "模型尾盘计算中");
+  else if (state.activeBucket === "mlLate" && state.mlLateSessionStatus === "error") setText("candidateInfo", "模型尾盘失败");
+  else if (state.activeBucket === "late" && state.lateSessionStatus === "loading") setText("candidateInfo", "尾盘计算中");
+  else if (state.activeBucket === "late" && state.lateSessionStatus === "error") setText("candidateInfo", "尾盘失败");
   else if (state.recommendationStatus === "error") setText("candidateInfo", "推荐失败");
   else setText("candidateInfo", `${rows.length}/${allRows.length} 只`);
 
   renderOverviewCandidates(allRows);
+  renderModelReference();
   clearNode(els.candidateList);
   if (!rows.length) {
     els.candidateList.appendChild(emptyNode(emptyCandidateMessage()));
@@ -669,6 +850,7 @@ function renderCandidates() {
     fragment.appendChild(candidateButton(row));
   });
   els.candidateList.appendChild(fragment);
+  iconRefresh();
 
   if (state.candidateVisible < allRows.length) {
     els.candidateList.appendChild(emptyNode("继续向下滚动加载更多", "loading-card"));
@@ -785,6 +967,8 @@ function renderSelected() {
   const row = state.selected;
   const idea = evaluateStock(row);
   setText("selectedCode", stockTitle(row));
+  els.baiduSearchBtn.disabled = !row;
+  els.candidateSearchBtn.disabled = !row;
   setText("selectedClose", row ? formatNumber(row.close, 2) : "--");
   setText("selectedPct", row ? formatPct(row.pct_chg) : "--");
   els.selectedPct.className = row ? quoteClass(row.pct_chg) : "";
@@ -1120,6 +1304,13 @@ function applyDailyPayload(payload, { fromCache = false } = {}) {
   state.loadError = "";
   state.recommendationStatus = "idle";
   state.recommendationError = "";
+  state.mlLateSessionStatus = "idle";
+  state.mlLateSessionError = "";
+  state.mlLateSessionRecommendations = [];
+  state.lateSessionStatus = "idle";
+  state.lateSessionError = "";
+  state.lateSessionRecommendations = [];
+  state.modelReference = null;
   if (payload.trade_date) els.tradeDate.value = fromTradeDate(payload.trade_date);
   resetVisibleCounts();
   state.recommendations = decorateRows(payload.recommendations || []);
@@ -1130,6 +1321,7 @@ function applyDailyPayload(payload, { fromCache = false } = {}) {
   renderSelected();
   renderKline();
   if (state.selected && !fromCache) loadSelectedStock(state.selected.ts_code);
+  if (payload.trade_date && !fromCache) loadMlLateSessionRecommendations(payload.trade_date);
   if (payload.trade_date && !fromCache) loadRecommendations(payload.trade_date);
   if (payload.trade_date && !fromCache) loadIndustryTrends(payload.trade_date);
   if (fromCache) showToast("先显示上次数据，正在后台刷新");
@@ -1156,7 +1348,7 @@ async function loadRecommendations(tradeDate) {
     if (state.recommendations.length) {
       const selectedCode = state.selected?.ts_code;
       state.selected = state.recommendations.find((row) => row.ts_code === selectedCode) || state.recommendations[0];
-      state.activeBucket = "priority";
+      if (!["late", "mlLate"].includes(state.activeBucket)) state.activeBucket = "priority";
       updateBucketButtons();
       renderSelected();
       await loadSelectedStock(state.selected.ts_code);
@@ -1165,6 +1357,63 @@ async function loadRecommendations(tradeDate) {
   } catch (error) {
     state.recommendationStatus = "error";
     state.recommendationError = error.message || "推荐池计算失败";
+    renderCandidates();
+  }
+}
+
+async function loadMlLateSessionRecommendations(tradeDate) {
+  if (!tradeDate) return;
+  state.mlLateSessionStatus = "loading";
+  state.mlLateSessionError = "";
+  renderCandidates();
+  try {
+    const response = await fetch(`/api/recommendations/ml-late-session?trade_date=${tradeDate}&limit=20&prediction_limit=500`);
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || "模型尾盘候选计算失败");
+    if (payload.data_source) state.dataSource = payload.data_source;
+    state.modelReference = payload.summary?.model_reference || null;
+    state.mlLateSessionRecommendations = decorateRows(payload.rows || []);
+    state.mlLateSessionStatus = "done";
+    if (state.activeBucket === "mlLate" && state.mlLateSessionRecommendations.length) {
+      const selectedCode = state.selected?.ts_code;
+      state.selected =
+        state.mlLateSessionRecommendations.find((row) => row.ts_code === selectedCode) ||
+        state.mlLateSessionRecommendations[0];
+      renderSelected();
+      await loadSelectedStock(state.selected.ts_code);
+    }
+    renderCandidates();
+  } catch (error) {
+    state.mlLateSessionStatus = "error";
+    state.mlLateSessionError = error.message || "模型尾盘候选计算失败";
+    renderCandidates();
+  }
+}
+
+async function loadLateSessionRecommendations(tradeDate) {
+  if (!tradeDate) return;
+  state.lateSessionStatus = "loading";
+  state.lateSessionError = "";
+  renderCandidates();
+  try {
+    const response = await fetch(`/api/recommendations/late-session?trade_date=${tradeDate}&limit=20`);
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || "尾盘候选计算失败");
+    if (payload.data_source) state.dataSource = payload.data_source;
+    state.lateSessionRecommendations = decorateRows(payload.rows || []);
+    state.lateSessionStatus = "done";
+    if (state.activeBucket === "late" && state.lateSessionRecommendations.length) {
+      const selectedCode = state.selected?.ts_code;
+      state.selected =
+        state.lateSessionRecommendations.find((row) => row.ts_code === selectedCode) ||
+        state.lateSessionRecommendations[0];
+      renderSelected();
+      await loadSelectedStock(state.selected.ts_code);
+    }
+    renderCandidates();
+  } catch (error) {
+    state.lateSessionStatus = "error";
+    state.lateSessionError = error.message || "尾盘候选计算失败";
     renderCandidates();
   }
 }
@@ -1565,6 +1814,8 @@ function bind() {
     "avgMetric",
     "amountMetric",
     "candidateInfo",
+    "candidateSearchBtn",
+    "modelReference",
     "overviewCandidateList",
     "candidateList",
     "selectedCode",
@@ -1582,6 +1833,7 @@ function bind() {
     "riskWarning",
     "historyInfo",
     "klineChart",
+    "baiduSearchBtn",
     "addSelectedBtn",
     "dataModal",
     "backtestModal",
@@ -1642,6 +1894,8 @@ function bind() {
   state.watchlist = loadJson(STORAGE_KEYS.watchlist, []);
   els.queryBtn.addEventListener("click", queryDaily);
   els.exportBtn.addEventListener("click", exportCsv);
+  els.baiduSearchBtn.addEventListener("click", () => openBaiduSearch(state.selected));
+  els.candidateSearchBtn.addEventListener("click", () => openBaiduSearch(state.selected));
   els.addSelectedBtn.addEventListener("click", addSelectedToWatchlist);
   els.dataModalBtn.addEventListener("click", openDataModal);
   els.backtestModalBtn.addEventListener("click", openBacktestModal);
@@ -1676,6 +1930,12 @@ function bind() {
       state.candidateVisible = CANDIDATE_PAGE_SIZE;
       els.candidateList.scrollTop = 0;
       updateBucketButtons();
+      if (state.activeBucket === "mlLate" && state.mlLateSessionStatus !== "done") {
+        loadMlLateSessionRecommendations(state.tradeDate);
+      }
+      if (state.activeBucket === "late" && state.lateSessionStatus !== "done") {
+        loadLateSessionRecommendations(state.tradeDate);
+      }
       renderCandidates();
     });
   });

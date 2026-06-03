@@ -35,6 +35,7 @@ from app.schemas.market import (
 from app.services import analysis
 from app.services import backtest
 from app.services import market_data
+from app.services import ml_realtime_screen
 from app.services import recommendation
 from app.services import stock_decision
 
@@ -172,6 +173,27 @@ async def _attach_next_day_validation(picks: list[dict[str, Any]], trade_date: s
     return await recommendation.attach_next_day_validation(picks, trade_date)
 
 
+async def _late_session_recommendation_pool(
+    rows: list[dict[str, Any]],
+    end_date: str,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    return await recommendation.late_session_recommendation_pool(rows, end_date, limit)
+
+
+async def _ml_late_session_screen(
+    trade_date: str,
+    *,
+    limit: int = 20,
+    prediction_limit: int = 500,
+) -> dict[str, Any]:
+    return await ml_realtime_screen.ml_late_session_screen(
+        trade_date,
+        limit=limit,
+        prediction_limit=prediction_limit,
+    )
+
+
 def _industry_trends(rows: list[dict[str, Any]], limit: int = 20) -> list[dict[str, Any]]:
     return recommendation.industry_trends(rows, limit)
 
@@ -280,6 +302,82 @@ async def recommendations(
         "rows": picks,
         "count": len(picks),
         "summary": _summarize(rows),
+        "cached_for_seconds": CACHE_TTL_SECONDS,
+        "fetched_at": datetime.now().isoformat(timespec="seconds"),
+    }
+
+
+@router.get("/api/recommendations/late-session", response_model=MarketRowsResponse)
+async def late_session_recommendations(
+    trade_date: Annotated[str | None, Query()] = None,
+    limit: Annotated[int, Query(ge=5, le=60)] = 20,
+) -> dict[str, Any]:
+    requested_date = _validate_trade_date(trade_date or _previous_calendar_date(_today_trade_date()))
+    actual_date, rows = await _latest_daily_rows(requested_date, DAILY_FIELDS)
+    daily_source = _data_source("daily", actual_date)
+    rows = await _attach_stock_basic(rows, allow_online=daily_source != "database")
+    basic_map = await _daily_basic_map(actual_date)
+    rows = [{**row, **basic_map.get(str(row.get("ts_code")), {})} for row in rows]
+    picks = await _late_session_recommendation_pool(rows, actual_date, limit)
+    return {
+        "requested_trade_date": requested_date,
+        "trade_date": actual_date,
+        "data_source": f"{daily_source}+realtime",
+        "rows": picks,
+        "count": len(picks),
+        "summary": _summarize(rows),
+        "cached_for_seconds": CACHE_TTL_SECONDS,
+        "fetched_at": datetime.now().isoformat(timespec="seconds"),
+    }
+
+
+@router.get("/api/recommendations/ml-late-session", response_model=MarketRowsResponse)
+async def ml_late_session_recommendations(
+    trade_date: Annotated[str | None, Query()] = None,
+    limit: Annotated[int, Query(ge=5, le=60)] = 20,
+    prediction_limit: Annotated[int, Query(ge=50, le=1000)] = 500,
+) -> dict[str, Any]:
+    requested_date = _validate_trade_date(trade_date or _previous_calendar_date(_today_trade_date()))
+    payload = await _ml_late_session_screen(
+        requested_date,
+        limit=limit,
+        prediction_limit=prediction_limit,
+    )
+    actual_date = str(payload.get("trade_date") or requested_date)
+    rows = await _daily_rows(actual_date, DAILY_FIELDS)
+    market_summary = _summarize(rows)
+    market_summary.update(
+        {
+            "model": payload.get("model"),
+            "model_reference": payload.get("model_reference"),
+            "prediction_count": payload.get("prediction_count", 0),
+            "quote_count": payload.get("quote_count", 0),
+            "accepted_count": payload.get("accepted_count", len(payload.get("rows") or [])),
+            "rejected_counts": payload.get("rejected_counts") or {},
+            "raw_top": payload.get("raw_top") or [],
+            "rules": {
+                "exclude": [
+                    "北交所",
+                    "ST/退市/U/W",
+                    "实时跌幅<-1%",
+                    "涨幅>4.2%过热",
+                    "日内振幅>12%",
+                    "日内位置<35%",
+                    "高位且涨幅>2%",
+                    "成交额<1.5亿",
+                ],
+                "note": "原始模型排序只作第一层召回，最终候选必须通过实时风险闸门。",
+            },
+        }
+    )
+    return {
+        "requested_trade_date": requested_date,
+        "trade_date": actual_date,
+        "fallback_used": payload.get("fallback_used"),
+        "data_source": "ml_predictions+realtime",
+        "rows": payload.get("rows") or [],
+        "count": len(payload.get("rows") or []),
+        "summary": market_summary,
         "cached_for_seconds": CACHE_TTL_SECONDS,
         "fetched_at": datetime.now().isoformat(timespec="seconds"),
     }

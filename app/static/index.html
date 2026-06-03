@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>A股策略后台</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260602-date-picker-1" />
-    <script src="/static/app.js?v=20260602-date-picker-1" defer></script>
+    <link rel="stylesheet" href="/static/styles.css?v=20260603-ml-metrics-1" />
+    <script src="/static/app.js?v=20260603-ml-metrics-1" defer></script>
   </head>
   <body>
     <main class="admin-shell">
@@ -160,22 +160,31 @@
                   <span>Candidates</span>
                   <h3>候选列表</h3>
                 </div>
-                <p id="candidateInfo">等待行情</p>
+                <div class="panel-actions">
+                  <p id="candidateInfo">等待行情</p>
+                  <button id="candidateSearchBtn" type="button" title="打开百度股市通" disabled>
+                    <i data-lucide="search"></i>
+                  </button>
+                </div>
               </header>
               <div class="segments" role="tablist" aria-label="候选分类">
-                <button class="active" data-bucket="priority" type="button">优先</button>
+                <button data-bucket="priority" type="button">优先</button>
+                <button class="active" data-bucket="mlLate" type="button">模型尾盘</button>
+                <button data-bucket="late" type="button">尾盘</button>
                 <button data-bucket="pullback" type="button">回踩</button>
                 <button data-bucket="active" type="button">活跃</button>
                 <button data-bucket="avoid" type="button">回避</button>
               </div>
+              <div class="model-reference" id="modelReference" hidden></div>
               <div class="candidate-table">
                 <div class="candidate-head" aria-hidden="true">
                   <span>股票</span>
                   <span>行业</span>
                   <span>涨跌幅</span>
                   <span>成交额</span>
-                  <span>评分</span>
+                  <span>模型/过滤分</span>
                   <span>判断</span>
+                  <span>实时</span>
                 </div>
                 <div class="candidate-list" id="candidateList" role="table" aria-label="候选股票"></div>
               </div>
@@ -192,9 +201,14 @@
                     <span>Selected</span>
                     <h3 id="selectedCode">未选择</h3>
                   </div>
-                  <button id="addSelectedBtn" type="button" title="加入观察">
-                    <i data-lucide="star"></i>
-                  </button>
+                  <div class="panel-actions">
+                    <button id="baiduSearchBtn" type="button" title="打开百度股市通" disabled>
+                      <i data-lucide="search"></i>
+                    </button>
+                    <button id="addSelectedBtn" type="button" title="加入观察">
+                      <i data-lucide="star"></i>
+                    </button>
+                  </div>
                 </header>
                 <div class="quote-grid">
                   <div><span>收盘</span><strong id="selectedClose">--</strong></div>

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -756,3 +757,326 @@ def test_stock_analysis_reports_actual_trade_date(
     assert payload["trade_date"] == "20231221"
     assert payload["actual_trade_date"] == "20231221"
     assert requested_query_dates == ["20231221", "20231221"]
+
+
+def test_late_session_recommendations_attach_realtime_tplus1_status(
+    isolated_app: tuple[TestClient, Path],
+    monkeypatch,
+) -> None:
+    client, _db_path = isolated_app
+
+    from app.db import cache as db_cache
+    from app.services import market_data, realtime_quote
+
+    rows: list[dict[str, Any]] = []
+    for day in range(1, 25):
+        close = 10 + day * 0.12
+        vol = 1000 + day * 18
+        rows.append(
+            {
+                "ts_code": "000001.SZ",
+                "trade_date": f"202401{day:02d}",
+                "open": round(close - 0.05, 2),
+                "high": round(close + 0.2, 2),
+                "low": round(close - 0.2, 2),
+                "close": round(close, 2),
+                "pre_close": round(close - 0.1, 2),
+                "change": 0.1,
+                "pct_chg": 2.4 if day == 24 else 1.0,
+                "vol": vol,
+                "amount": 12000 + day * 100,
+            }
+        )
+    rows[-1].update(
+        {
+            "open": 12.55,
+            "high": 12.95,
+            "low": 12.45,
+            "close": 12.75,
+            "pre_close": 12.45,
+            "change": 0.3,
+            "vol": 1700,
+            "amount": 50000,
+        }
+    )
+
+    db_cache.init_sync()
+    db_cache.save_rows_sync("daily", rows, complete=False)
+    db_cache.save_rows_sync(
+        "daily_basic",
+        [
+            {
+                "ts_code": "000001.SZ",
+                "trade_date": "20240124",
+                "turnover_rate": 6.2,
+                "turnover_rate_f": 7.1,
+                "volume_ratio": 1.4,
+                "total_mv": 300000,
+                "circ_mv": 200000,
+                "pe": 15,
+                "pb": 1.6,
+            }
+        ],
+        complete=False,
+    )
+    db_cache.save_rows_sync(
+        "stock_basic",
+        [{"ts_code": "000001.SZ", "name": "测试银行", "industry": "银行", "area": "深圳"}],
+        complete=False,
+        default_trade_date="",
+    )
+    for day in range(1, 25):
+        db_cache.mark_complete_sync("daily", f"202401{day:02d}", 1, "test")
+    db_cache.mark_complete_sync("daily_basic", "20240124", 1, "test")
+
+    async def fake_quotes(ts_codes: list[str]) -> dict[str, dict[str, Any]]:
+        assert ts_codes == ["000001.SZ"]
+        return {
+            "000001.SZ": {
+                "ts_code": "000001.SZ",
+                "source": "test",
+                "available": True,
+                "price": 12.8,
+                "pct_chg": 0.4,
+                "amount_yi": 1.2,
+                "quote_date": "2024-01-25",
+                "quote_time": "14:30:00",
+            }
+        }
+
+    monkeypatch.setattr(realtime_quote, "sina_quotes", fake_quotes)
+
+    async def fake_daily_basic_map(trade_date: str) -> dict[str, dict[str, Any]]:
+        assert trade_date == "20240124"
+        return {
+            "000001.SZ": {
+                "turnover_rate": 6.2,
+                "turnover_rate_f": 7.1,
+                "volume_ratio": 1.4,
+                "total_mv": 300000,
+                "circ_mv": 200000,
+                "pe": 15,
+                "pb": 1.6,
+            }
+        }
+
+    async def fake_attach_stock_basic(rows_to_attach: list[dict[str, Any]], allow_online: bool = True) -> list[dict[str, Any]]:
+        return [{**row, "name": "测试银行", "industry": "银行", "area": "深圳"} for row in rows_to_attach]
+
+    monkeypatch.setattr(market_data, "daily_basic_map", fake_daily_basic_map)
+    monkeypatch.setattr(market_data, "attach_stock_basic", fake_attach_stock_basic)
+
+    async def fake_stock_history(
+        ts_code: str,
+        end_date: str,
+        days: int,
+        fields: str | None = None,
+    ) -> list[dict[str, Any]]:
+        assert ts_code == "000001.SZ"
+        assert end_date == "20240124"
+        return rows[-days:]
+
+    monkeypatch.setattr(market_data, "stock_history", fake_stock_history)
+
+    response = client.get("/api/recommendations/late-session", params={"trade_date": "20240124"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["data_source"] == "database+realtime"
+    assert payload["count"] == 1
+    item = payload["rows"][0]
+    assert item["late_session"]["quote"]["price"] == 12.8
+    assert item["late_session"]["action"] in {"可继续观察", "等回踩"}
+    assert "T+1" in item["late_session"]["t_plus_1_note"]
+
+
+def test_ml_late_session_filters_raw_model_predictions_with_realtime_gate(
+    isolated_app: tuple[TestClient, Path],
+    monkeypatch,
+) -> None:
+    client, _db_path = isolated_app
+
+    from app.db import cache as db_cache
+    from app.services import realtime_quote
+
+    db_cache.init_sync()
+    db_cache.save_rows_sync(
+        "daily",
+        [
+            {
+                "ts_code": "000001.SZ",
+                "trade_date": "20240124",
+                "open": 10.0,
+                "high": 10.3,
+                "low": 9.8,
+                "close": 10.1,
+                "pre_close": 9.9,
+                "change": 0.2,
+                "pct_chg": 2.02,
+                "vol": 2000,
+                "amount": 20200,
+            },
+            {
+                "ts_code": "000002.SZ",
+                "trade_date": "20240124",
+                "open": 20.0,
+                "high": 20.4,
+                "low": 19.5,
+                "close": 20.1,
+                "pre_close": 19.9,
+                "change": 0.2,
+                "pct_chg": 1.01,
+                "vol": 2200,
+                "amount": 44200,
+            },
+            {
+                "ts_code": "000003.SZ",
+                "trade_date": "20240124",
+                "open": 30.0,
+                "high": 31.0,
+                "low": 29.8,
+                "close": 30.8,
+                "pre_close": 30.0,
+                "change": 0.8,
+                "pct_chg": 2.67,
+                "vol": 2400,
+                "amount": 73920,
+            },
+        ],
+        complete=True,
+        default_trade_date="20240124",
+        source="test",
+    )
+    db_cache.save_rows_sync(
+        "stock_basic",
+        [
+            {"ts_code": "000001.SZ", "name": "合格股份", "industry": "元器件", "area": "深圳"},
+            {"ts_code": "000002.SZ", "name": "走弱股份", "industry": "元器件", "area": "深圳"},
+            {"ts_code": "000003.SZ", "name": "过热股份", "industry": "半导体", "area": "上海"},
+        ],
+        complete=True,
+        default_trade_date="",
+        source="test",
+    )
+
+    now = "2024-01-25T14:30:00"
+    metrics = {
+        "sample_count": 300,
+        "train_sample_count": 240,
+        "validation_sample_count": 60,
+        "train": {"f1": 0.5, "log_loss": 0.52},
+        "validation": {"accuracy": 0.7, "precision": 0.55, "recall": 0.6, "f1": 0.57, "log_loss": 0.61},
+        "ranking": {
+            "validation": {
+                "market_hit_rate": 0.3,
+                "top_n": {"50": {"count": 3, "hit_rate": 0.66, "lift": 0.36}},
+            }
+        },
+    }
+    with db_cache.connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO ml_models(
+                model_id, name, status, model_type, feature_set, label_set,
+                artifact_path, metrics_json, params_json, created_at, activated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "model_pytest_realtime",
+                "pytest realtime",
+                "active",
+                "logistic_ranker_v1",
+                "short_swing_v2",
+                "next_high_3pct_v1",
+                None,
+                json.dumps(metrics, ensure_ascii=False),
+                "{}",
+                now,
+                now,
+            ),
+        )
+        for ts_code, probability in [
+            ("000002.SZ", 0.99),
+            ("000003.SZ", 0.98),
+            ("000001.SZ", 0.97),
+        ]:
+            conn.execute(
+                """
+                INSERT INTO ml_predictions(
+                    model_id, trade_date, ts_code, probability, ml_score, features_json, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("model_pytest_realtime", "20240124", ts_code, probability, probability, "{}", now),
+            )
+        conn.commit()
+
+    async def fake_quotes(ts_codes: list[str]) -> dict[str, dict[str, Any]]:
+        assert set(ts_codes) == {"000001.SZ", "000002.SZ", "000003.SZ"}
+        return {
+            "000001.SZ": {
+                "ts_code": "000001.SZ",
+                "name": "合格股份",
+                "source": "test",
+                "available": True,
+                "pre_close": 10.0,
+                "price": 10.2,
+                "pct_chg": 2.0,
+                "high": 10.5,
+                "low": 9.8,
+                "amount_yi": 2.6,
+                "quote_date": "2024-01-25",
+                "quote_time": "14:30:00",
+            },
+            "000002.SZ": {
+                "ts_code": "000002.SZ",
+                "name": "走弱股份",
+                "source": "test",
+                "available": True,
+                "pre_close": 20.0,
+                "price": 19.2,
+                "pct_chg": -4.0,
+                "high": 20.3,
+                "low": 19.1,
+                "amount_yi": 3.1,
+                "quote_date": "2024-01-25",
+                "quote_time": "14:30:00",
+            },
+            "000003.SZ": {
+                "ts_code": "000003.SZ",
+                "name": "过热股份",
+                "source": "test",
+                "available": True,
+                "pre_close": 30.0,
+                "price": 31.8,
+                "pct_chg": 6.0,
+                "high": 32.0,
+                "low": 30.5,
+                "amount_yi": 4.2,
+                "quote_date": "2024-01-25",
+                "quote_time": "14:30:00",
+            },
+        }
+
+    monkeypatch.setattr(realtime_quote, "sina_quotes", fake_quotes)
+
+    response = client.get(
+        "/api/recommendations/ml-late-session",
+        params={"trade_date": "20240124", "limit": 5, "prediction_limit": 50},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["data_source"] == "ml_predictions+realtime"
+    assert payload["count"] == 1
+    assert payload["rows"][0]["ts_code"] == "000001.SZ"
+    assert payload["rows"][0]["recommend_type"] == "模型尾盘"
+    assert payload["rows"][0]["late_session"]["quote"]["price"] == 10.2
+    assert payload["summary"]["prediction_count"] == 3
+    assert payload["summary"]["accepted_count"] == 1
+    assert payload["summary"]["model_reference"]["validation"]["f1"] == 0.57
+    assert payload["summary"]["model_reference"]["ranking_validation"]["top50"]["hit_rate"] == 0.66
+    assert payload["summary"]["model_reference"]["fit"]["log_loss_gap"] == 0.09
+    assert payload["summary"]["rejected_counts"]["实时跌幅<-1%"] == 1
+    assert payload["summary"]["rejected_counts"]["涨幅>4.2%过热"] == 1

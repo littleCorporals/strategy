@@ -7,6 +7,7 @@ from typing import Any
 from app.clients import ai_client
 from app.repositories import market_cache
 from app.services import analysis, market_data
+from app.services import realtime_quote
 
 
 def ai_configured() -> bool:
@@ -223,6 +224,101 @@ async def attach_next_day_validation(picks: list[dict[str, Any]], trade_date: st
         validation["result"] = result
         validated.append({**row, "next_day": validation})
     return validated
+
+
+def _late_session_status(row: dict[str, Any], quote: dict[str, Any]) -> dict[str, Any]:
+    current = analysis.number(quote, "price")
+    entry_low = analysis.number(row, "entry_low")
+    entry_high = analysis.number(row, "entry_high")
+    stop_price = analysis.number(row, "stop_price")
+    target_price = analysis.number(row, "target_price")
+    pct = analysis.number(quote, "pct_chg")
+    if current is None or entry_low is None or entry_high is None:
+        return {
+            "action": "只观察",
+            "level": "no_quote",
+            "reason": "实时行情不可用，不能按尾盘买点判断。",
+        }
+
+    if current < entry_low:
+        action = "等企稳"
+        level = "below_entry"
+        reason = "价格低于计划买点下沿，先确认承接，不接下跌惯性。"
+    elif current <= entry_high:
+        action = "可继续观察"
+        level = "in_entry"
+        reason = "价格仍在计划买点区间，尾盘若不破分时承接可继续看。"
+    elif target_price is not None and current >= target_price * 0.985:
+        action = "不新开"
+        level = "near_target"
+        reason = "已经接近压力目标，T+1 下不能为了追涨新开。"
+    elif current <= entry_high * 1.01:
+        action = "等回踩"
+        level = "slightly_above"
+        reason = "略高于计划买点，只有回踩到区间内才有性价比。"
+    else:
+        action = "不追高"
+        level = "above_entry"
+        reason = "明显高于计划买点，T+1 买入后隔日才能卖，追高风险偏大。"
+
+    if pct is not None and pct < -2 and level in {"below_entry", "in_entry"}:
+        action = "只观察"
+        level = "weak_intraday"
+        reason = "实时走势转弱，尾盘买入需要等重新站稳。"
+
+    return {
+        "action": action,
+        "level": level,
+        "reason": reason,
+        "distance_to_entry_high_pct": analysis.round_number(((current - entry_high) / entry_high) * 100, 2),
+        "distance_to_target_pct": (
+            analysis.round_number(((target_price - current) / current) * 100, 2) if target_price else None
+        ),
+        "distance_to_stop_pct": (
+            analysis.round_number(((current - stop_price) / current) * 100, 2) if stop_price else None
+        ),
+    }
+
+
+def _late_session_rank(row: dict[str, Any], quote: dict[str, Any], status: dict[str, Any]) -> float:
+    base = analysis.number(row, "recommend_score") or 0
+    rt_pct = analysis.number(quote, "pct_chg") or 0
+    amount_yi = analysis.number(quote, "amount_yi") or 0
+    distance_above = max(0.0, analysis.number(status, "distance_to_entry_high_pct") or 0.0)
+    score = base + min(max(rt_pct, -5), 5) * 2 + min(amount_yi, 5) - distance_above * 8
+    if status.get("level") in {"in_entry", "slightly_above"}:
+        score += 8
+    if status.get("level") in {"near_target", "above_entry", "weak_intraday"}:
+        score -= 18
+    return round(score, 2)
+
+
+async def late_session_recommendation_pool(
+    rows: list[dict[str, Any]],
+    end_date: str,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    base_picks = await recommendation_pool(rows, end_date, max(limit, 30))
+    if not base_picks:
+        return []
+    quotes = await realtime_quote.sina_quotes([str(row.get("ts_code")) for row in base_picks])
+    reviewed: list[dict[str, Any]] = []
+    for row in base_picks:
+        quote = quotes.get(str(row.get("ts_code")), {})
+        status = _late_session_status(row, quote)
+        reviewed.append(
+            {
+                **row,
+                "late_session": {
+                    **status,
+                    "quote": quote,
+                    "rank_score": _late_session_rank(row, quote, status),
+                    "t_plus_1_note": "A股 T+1：今天买入最快下个交易日才能卖，尾盘候选必须避免追高。",
+                },
+            }
+        )
+    reviewed.sort(key=lambda item: item["late_session"]["rank_score"], reverse=True)
+    return reviewed[:limit]
 
 
 def industry_trends(rows: list[dict[str, Any]], limit: int = 20) -> list[dict[str, Any]]:
