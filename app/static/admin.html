@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>模型管理台</title>
-    <link rel="stylesheet" href="/static/admin.css?v=20260602-date-picker-1" />
-    <script src="/static/admin.js?v=20260602-date-picker-1" defer></script>
+    <link rel="stylesheet" href="/static/admin.css?v=20260605-long-task-toast-1" />
+    <script src="/static/admin.js?v=20260605-long-task-toast-1" defer></script>
   </head>
   <body>
     <main class="admin-shell">
@@ -99,44 +99,20 @@
             </div>
           </section>
 
-          <section class="steps" id="stepGuide">
-            <div class="step-card" data-step="train">
-              <b>1</b>
-              <strong>生成候选模型</strong>
-              <span>创建并执行训练任务。</span>
+          <section class="page-card guide-card">
+            <div class="section-title">
+              <div>
+                <h3>新手步骤</h3>
+                <p>先看当前该做哪一步，再去对应页面点同名按钮。</p>
+              </div>
             </div>
-            <div class="step-card" data-step="approve">
-              <b>2</b>
-              <strong>审核候选模型</strong>
-              <span>确认后点通过。</span>
+            <div class="guide-intro">
+              <strong>最省事：</strong>
+              <span>先回填历史行情，再训练和上线。想分步操作，就按 1 到 5 走。</span>
             </div>
-            <div class="step-card" data-step="activate">
-              <b>3</b>
-              <strong>上线启用模型</strong>
-              <span>通过后才允许上线。</span>
-            </div>
-            <div class="step-card" data-step="monitor">
-              <b>4</b>
-              <strong>预测并验证</strong>
-              <span>观察命中率和收益。</span>
-            </div>
+            <section class="steps" id="stepGuide"></section>
           </section>
 
-          <section class="page-card">
-            <div class="section-title">
-              <h3>常用操作</h3>
-              <p>新手可以只跟着这里处理。</p>
-            </div>
-            <div class="quick-actions">
-              <button id="queueTrainBtn" type="button">新建训练任务</button>
-              <button id="runQueuedBtn" type="button">执行待训练任务</button>
-              <button id="trainApproveActivateBtn" type="button">一键训练并上线</button>
-              <button id="runTrainingMatrixBtn" type="button">多轮训练选优</button>
-              <button id="approveCandidateBtn" type="button">通过候选模型</button>
-              <button id="activateApprovedBtn" type="button">上线已通过模型</button>
-              <button id="rollbackModelBtn" type="button">回滚上一版</button>
-            </div>
-          </section>
         </section>
 
         <section class="view" data-view-panel="training">
@@ -144,77 +120,211 @@
             <div>
               <span>Training</span>
               <h2>训练任务</h2>
-              <p>创建、执行和查看训练队列。</p>
-            </div>
-            <div class="page-actions">
-              <button id="queueTrainBtnTraining" type="button">新建训练任务</button>
-              <button id="runTrainingMatrixBtnTraining" type="button">多轮训练选优</button>
+              <p>把训练和换代单独放在这里。先选训练方式，再按步骤执行。</p>
             </div>
           </header>
 
           <section class="training-workbench">
-            <div class="training-control-stack">
-              <section class="page-card history-card">
+            <section class="page-card training-tabs-card">
+              <div class="training-tabs" id="trainingTabs" aria-label="训练方式切换">
+                <button class="training-tab active" type="button" data-training-tab="single">单模型训练</button>
+                <button class="training-tab" type="button" data-training-tab="matrix">多模型选优</button>
+                <button class="training-tab" type="button" data-training-tab="records">训练记录</button>
+              </div>
+            </section>
+
+            <section class="training-panel active" data-training-panel="single">
+              <section class="page-card workflow-card">
                 <div class="section-title">
-                  <h3>历史数据和多轮训练</h3>
-                  <p id="historyBackfillHint">先补足更长历史，再用多个标签和训练窗口重复训练，自动选择验证集 Top50 表现最好的模型。</p>
+                  <div>
+                    <h3>单模型训练步骤</h3>
+                    <p>适合你想固定一个标签，持续训练和换代时使用。</p>
+                  </div>
                 </div>
-                <div class="field-grid compact-fields">
-                  <label class="field">
-                    <span class="help-label">回填开始日<span class="help-tip" tabindex="0" title="从这个日期开始检查本地库缺失的日线行情；建议覆盖半年到一年。" aria-label="从这个日期开始检查本地库缺失的日线行情；建议覆盖半年到一年。">?<span class="help-popover" role="tooltip">从这个日期开始检查本地库缺失的日线行情；建议覆盖半年到一年。</span></span></span>
-                    <input id="backfillStartInput" type="date" />
-                  </label>
-                  <label class="field">
-                    <span class="help-label">回填结束日<span class="help-tip" tabindex="0" title="回填到这个日期为止；留空时使用系统判断的最新可获取行情日。" aria-label="回填到这个日期为止；留空时使用系统判断的最新可获取行情日。">?<span class="help-popover" role="tooltip">回填到这个日期为止；留空时使用系统判断的最新可获取行情日。</span></span></span>
-                    <input id="backfillEndInput" type="date" />
-                  </label>
+                <div class="workflow-note">
+                  <strong>建议节奏：</strong>
+                  <span>先回填历史行情准备样本，再选标签、新建任务、执行训练。训练完成后去“模型版本”审批和上线。</span>
                 </div>
-                <div class="form-actions">
-                  <button id="backfillHistoryBtn" type="button">回填历史日线</button>
-                  <button id="runTrainingMatrixBtnPanel" type="button">多轮训练并上线最优</button>
+                <div class="training-step-grid">
+                  <article class="training-step-card">
+                    <div class="training-step-head">
+                      <b>1</b>
+                      <div>
+                        <strong>准备训练样本</strong>
+                        <span>首次使用或清库后必须先做</span>
+                      </div>
+                    </div>
+                    <p>模型样本来自本地日线缓存。没有历史行情时，训练任务会因为样本为空而失败。</p>
+                    <div class="step-actions">
+                      <button type="button" data-admin-view="training" data-admin-training-tab="matrix">去回填历史</button>
+                    </div>
+                  </article>
+
+                  <article class="training-step-card">
+                    <div class="training-step-head">
+                      <b>2</b>
+                      <div>
+                        <strong>选择训练配置</strong>
+                        <span>先决定特征集和标签集</span>
+                      </div>
+                    </div>
+                    <p>如果你想长期用同一类模型，就固定一个标签集，后面只在这个方向上持续换代。</p>
+                    <div class="form-card training-config-inline">
+                      <label class="field">
+                        <span class="help-label">特征集<span class="help-tip" tabindex="0" data-tooltip="模型输入字段的版本，例如短线价量、趋势、量能和波动等特征。" aria-label="模型输入字段的版本，例如短线价量、趋势、量能和波动等特征。">?<span class="help-popover" role="tooltip">模型输入字段的版本，例如短线价量、趋势、量能和波动等特征。</span></span></span>
+                        <select id="featureSetInput"></select>
+                      </label>
+                      <label class="field">
+                        <span class="help-label">标签集<span class="help-tip" tabindex="0" data-tooltip="模型要预测的目标，例如次日冲高 3% 或未来 3 日冲高 3%。" aria-label="模型要预测的目标，例如次日冲高 3% 或未来 3 日冲高 3%。">?<span class="help-popover" role="tooltip">模型要预测的目标，例如次日冲高 3% 或未来 3 日冲高 3%。</span></span></span>
+                        <select id="labelSetInput"></select>
+                      </label>
+                    </div>
+                  </article>
+
+                  <article class="training-step-card">
+                    <div class="training-step-head">
+                      <b>3</b>
+                      <div>
+                        <strong>新建训练任务</strong>
+                        <span>先把这次训练放进队列</span>
+                      </div>
+                    </div>
+                    <p>点完以后，页面下方的“训练记录”里会出现一个 `queued` 状态的任务。</p>
+                    <div class="step-actions">
+                      <button id="queueTrainBtnTraining" type="button">新建单模型任务</button>
+                      <button type="button" data-training-tab-target="records">看训练记录</button>
+                    </div>
+                  </article>
+
+                  <article class="training-step-card">
+                    <div class="training-step-head">
+                      <b>4</b>
+                      <div>
+                        <strong>执行待训练任务</strong>
+                        <span>真正开始训练并生成候选模型</span>
+                      </div>
+                    </div>
+                    <p>如果你只想省事，也可以直接用“一键训练并上线”，系统会自动串起来执行。</p>
+                    <div class="step-actions">
+                      <button id="runQueuedBtnTraining" type="button">执行待训练任务</button>
+                      <button id="trainApproveActivateBtnTraining" type="button">一键训练并上线</button>
+                    </div>
+                  </article>
+
+                  <article class="training-step-card">
+                    <div class="training-step-head">
+                      <b>5</b>
+                      <div>
+                        <strong>审批并上线</strong>
+                        <span>训练结束后去模型版本继续</span>
+                      </div>
+                    </div>
+                    <p>训练页只负责“产出候选模型”。候选是否通过、是否上线，都到“模型版本”页集中处理。</p>
+                    <div class="step-actions">
+                      <button type="button" data-admin-view="models">去模型版本</button>
+                      <button type="button" data-admin-view="metrics">去模型指标</button>
+                    </div>
+                  </article>
                 </div>
               </section>
+            </section>
 
-              <section class="page-card training-config-card">
+            <section class="training-panel" data-training-panel="matrix">
+              <section class="page-card workflow-card">
                 <div class="section-title">
-                  <h3>训练配置</h3>
-                  <p>选择本次训练使用的特征集和标签集。</p>
+                  <div>
+                    <h3>多模型选优步骤</h3>
+                    <p>适合你想让系统自动比较多个标签，再把最优版本上线。</p>
+                  </div>
                 </div>
-                <div class="form-card">
-                  <label class="field">
-                    <span class="help-label">特征集<span class="help-tip" tabindex="0" title="模型输入字段的版本，例如短线价量、趋势、量能和波动等特征。" aria-label="模型输入字段的版本，例如短线价量、趋势、量能和波动等特征。">?<span class="help-popover" role="tooltip">模型输入字段的版本，例如短线价量、趋势、量能和波动等特征。</span></span></span>
-                    <select id="featureSetInput"></select>
-                  </label>
-                  <label class="field">
-                    <span class="help-label">标签集<span class="help-tip" tabindex="0" title="模型要预测的目标，例如次日冲高 3% 或未来 3 日冲高 3%。" aria-label="模型要预测的目标，例如次日冲高 3% 或未来 3 日冲高 3%。">?<span class="help-popover" role="tooltip">模型要预测的目标，例如次日冲高 3% 或未来 3 日冲高 3%。</span></span></span>
-                    <select id="labelSetInput"></select>
-                  </label>
+                <div class="workflow-note">
+                  <strong>适用场景：</strong>
+                  <span>当你不确定该用哪个标签集，或者补了很多历史数据后想重新比一轮，就走这里。</span>
+                </div>
+                <div class="training-step-grid matrix">
+                  <article class="training-step-card">
+                    <div class="training-step-head">
+                      <b>1</b>
+                      <div>
+                        <strong>先补历史数据</strong>
+                        <span>历史越长，比较才更稳定</span>
+                      </div>
+                    </div>
+                    <p id="historyBackfillHint">先补足更长历史，再用多个标签和训练窗口重复训练，自动选择验证集 Top50 表现最好的模型。</p>
+                    <div class="field-grid compact-fields">
+                      <label class="field">
+                        <span class="help-label">回填开始日<span class="help-tip" tabindex="0" data-tooltip="从这个日期开始检查本地库缺失的日线行情；建议覆盖半年到一年。" aria-label="从这个日期开始检查本地库缺失的日线行情；建议覆盖半年到一年。">?<span class="help-popover" role="tooltip">从这个日期开始检查本地库缺失的日线行情；建议覆盖半年到一年。</span></span></span>
+                        <input id="backfillStartInput" type="date" />
+                      </label>
+                      <label class="field">
+                        <span class="help-label">回填结束日<span class="help-tip" tabindex="0" data-tooltip="回填到这个日期为止；留空时使用系统判断的最新可获取行情日。" aria-label="回填到这个日期为止；留空时使用系统判断的最新可获取行情日。">?<span class="help-popover" role="tooltip">回填到这个日期为止；留空时使用系统判断的最新可获取行情日。</span></span></span>
+                        <input id="backfillEndInput" type="date" />
+                      </label>
+                    </div>
+                    <div class="step-actions">
+                      <button id="backfillHistoryBtn" type="button">回填历史日线</button>
+                    </div>
+                  </article>
+
+                  <article class="training-step-card">
+                    <div class="training-step-head">
+                      <b>2</b>
+                      <div>
+                        <strong>自动比较并上线最优</strong>
+                        <span>比较多个标签和训练窗口</span>
+                      </div>
+                    </div>
+                    <p>当前会基于所选特征集，比较多个标签集，并按验证集 Top50、F1 和样本数自动挑最优模型。</p>
+                    <div class="step-actions">
+                      <button id="runTrainingMatrixBtnPanel" type="button">多轮训练并上线最优</button>
+                      <button id="runTrainingMatrixBtnTraining" type="button">只运行多模型选优</button>
+                    </div>
+                  </article>
+
+                  <article class="training-step-card">
+                    <div class="training-step-head">
+                      <b>3</b>
+                      <div>
+                        <strong>回模型页复查结果</strong>
+                        <span>看当前激活模型和其它候选</span>
+                      </div>
+                    </div>
+                    <p>自动选优后，建议再去“模型版本”和“模型指标”看一眼，确认本次最优模型是不是你真正想长期用的方向。</p>
+                    <div class="step-actions">
+                      <button type="button" data-admin-view="models">去模型版本</button>
+                      <button type="button" data-admin-view="metrics">去模型指标</button>
+                    </div>
+                  </article>
                 </div>
               </section>
-            </div>
+            </section>
 
-            <section class="page-card training-table-card">
-              <div class="section-title">
-                <h3>训练记录</h3>
-                <p>样本、验证指标、Top50 和参数集中查看。</p>
-              </div>
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th><span class="help-label">任务<span class="help-tip" tabindex="0" title="本次训练任务编号。" aria-label="本次训练任务编号。">?<span class="help-popover" role="tooltip">本次训练任务编号。</span></span></span></th>
-                      <th><span class="help-label">状态<span class="help-tip" tabindex="0" title="训练任务当前状态。" aria-label="训练任务当前状态。">?<span class="help-popover" role="tooltip">训练任务当前状态。</span></span></span></th>
-                      <th><span class="help-label">特征 / 标签<span class="help-tip" tabindex="0" title="特征集是模型输入，标签集是模型预测目标。" aria-label="特征集是模型输入，标签集是模型预测目标。">?<span class="help-popover" role="tooltip">特征集是模型输入，标签集是模型预测目标。</span></span></span></th>
-                      <th><span class="help-label">样本<span class="help-tip" tabindex="0" title="总样本和时间切分出来的验证样本数量。" aria-label="总样本和时间切分出来的验证样本数量。">?<span class="help-popover" role="tooltip">总样本和时间切分出来的验证样本数量。</span></span></span></th>
-                      <th><span class="help-label">验证 F1<span class="help-tip" tabindex="0" title="验证集 F1 和 Log Loss，F1 越高越好，Log Loss 越低越好。" aria-label="验证集 F1 和 Log Loss，F1 越高越好，Log Loss 越低越好。">?<span class="help-popover" role="tooltip">验证集 F1 和 Log Loss，F1 越高越好，Log Loss 越低越好。</span></span></span></th>
-                      <th><span class="help-label">Top50<span class="help-tip" tabindex="0" title="模型分数前 50 只股票的命中率和相对全市场提升。" aria-label="模型分数前 50 只股票的命中率和相对全市场提升。">?<span class="help-popover" role="tooltip">模型分数前 50 只股票的命中率和相对全市场提升。</span></span></span></th>
-                      <th><span class="help-label">参数<span class="help-tip" tabindex="0" title="本次训练传入的主要超参数。" aria-label="本次训练传入的主要超参数。">?<span class="help-popover" role="tooltip">本次训练传入的主要超参数。</span></span></span></th>
-                      <th>操作</th>
-                    </tr>
-                  </thead>
-                  <tbody id="runsBody"></tbody>
-                </table>
-              </div>
+            <section class="training-panel" data-training-panel="records">
+              <section class="page-card training-table-card">
+                <div class="section-title">
+                  <div>
+                    <h3>训练记录</h3>
+                    <p>样本、验证指标、Top50 和参数集中查看；新建任务后也会先显示在这里。</p>
+                  </div>
+                </div>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th><span class="help-label">任务<span class="help-tip" tabindex="0" data-tooltip="本次训练任务编号。" aria-label="本次训练任务编号。">?<span class="help-popover" role="tooltip">本次训练任务编号。</span></span></span></th>
+                        <th><span class="help-label">状态<span class="help-tip" tabindex="0" data-tooltip="训练任务当前状态。" aria-label="训练任务当前状态。">?<span class="help-popover" role="tooltip">训练任务当前状态。</span></span></span></th>
+                        <th><span class="help-label">特征 / 标签<span class="help-tip" tabindex="0" data-tooltip="特征集是模型输入，标签集是模型预测目标。" aria-label="特征集是模型输入，标签集是模型预测目标。">?<span class="help-popover" role="tooltip">特征集是模型输入，标签集是模型预测目标。</span></span></span></th>
+                        <th><span class="help-label">样本<span class="help-tip" tabindex="0" data-tooltip="总样本和时间切分出来的验证样本数量。" aria-label="总样本和时间切分出来的验证样本数量。">?<span class="help-popover" role="tooltip">总样本和时间切分出来的验证样本数量。</span></span></span></th>
+                        <th><span class="help-label">验证 F1<span class="help-tip" tabindex="0" data-tooltip="验证集 F1 和 Log Loss，F1 越高越好，Log Loss 越低越好。" aria-label="验证集 F1 和 Log Loss，F1 越高越好，Log Loss 越低越好。">?<span class="help-popover" role="tooltip">验证集 F1 和 Log Loss，F1 越高越好，Log Loss 越低越好。</span></span></span></th>
+                        <th><span class="help-label">Top50<span class="help-tip" tabindex="0" data-tooltip="模型分数前 50 只股票的命中率和相对全市场提升。" aria-label="模型分数前 50 只股票的命中率和相对全市场提升。">?<span class="help-popover" role="tooltip">模型分数前 50 只股票的命中率和相对全市场提升。</span></span></span></th>
+                        <th><span class="help-label">参数<span class="help-tip" tabindex="0" data-tooltip="本次训练传入的主要超参数。" aria-label="本次训练传入的主要超参数。">?<span class="help-popover" role="tooltip">本次训练传入的主要超参数。</span></span></span></th>
+                        <th>操作</th>
+                      </tr>
+                    </thead>
+                    <tbody id="runsBody"></tbody>
+                  </table>
+                </div>
+              </section>
             </section>
           </section>
         </section>
@@ -231,22 +341,28 @@
             </div>
           </header>
 
-          <section class="page-card">
+          <section class="page-card active-model-card" id="activeModelPanel"></section>
+
+          <section class="page-card models-table-card">
+            <div class="section-title">
+              <div>
+                <h3>其它模型版本</h3>
+                <p>候选、已下线和归档版本分页展示。</p>
+              </div>
+            </div>
             <div class="table-wrap">
-              <table>
+              <table class="models-table">
                 <thead>
                   <tr>
-                    <th>模型</th>
-                    <th>状态</th>
-                    <th>特征</th>
-                    <th>标签</th>
-                    <th>创建时间</th>
-                    <th>操作</th>
+                    <th>模型与指标</th>
+                    <th>特征 / 标签</th>
+                    <th>状态 / 操作</th>
                   </tr>
                 </thead>
                 <tbody id="modelsBody"></tbody>
               </table>
             </div>
+            <div class="pagination" id="modelsPagination" aria-label="模型版本分页"></div>
           </section>
         </section>
 

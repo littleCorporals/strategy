@@ -270,11 +270,20 @@ async def run_training_matrix(
 
 
 async def run_training_pipeline(run_id: str) -> dict[str, Any]:
-    run = await model_repo.get_training_run(run_id)
+    run, claimed = await model_repo.claim_training_run(run_id)
     if not run:
         raise ValueError("训练任务不存在")
+    if not claimed:
+        if run.get("status") == "completed" and run.get("model_id"):
+            return {
+                "ok": True,
+                "run": run,
+                "model": await model_repo.get_model(str(run["model_id"])),
+                "pipeline": None,
+                "reused": True,
+            }
+        raise ValueError("训练任务正在执行，请稍后刷新")
 
-    await model_repo.update_training_run(run_id, status="running", started=True)
     try:
         rows = await market_cache.fetch_rows(
             "daily",

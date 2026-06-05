@@ -432,6 +432,29 @@ async def update_training_run(
     return await get_training_run(run_id)
 
 
+async def claim_training_run(run_id: str) -> tuple[dict[str, Any] | None, bool]:
+    await ensure()
+    now = _now()
+    with connect() as conn:
+        row = conn.execute("SELECT * FROM ml_training_runs WHERE run_id = ?", (run_id,)).fetchone()
+        if not row:
+            return None, False
+        if row["status"] not in {"queued", "failed"}:
+            return _row_to_dict(row), False
+        result = conn.execute(
+            """
+            UPDATE ml_training_runs
+            SET status = 'running', started_at = ?, finished_at = NULL, error = ''
+            WHERE run_id = ? AND status IN ('queued', 'failed')
+            """,
+            (now, run_id),
+        )
+        conn.commit()
+        claimed = result.rowcount > 0
+        row = conn.execute("SELECT * FROM ml_training_runs WHERE run_id = ?", (run_id,)).fetchone()
+    return (_row_to_dict(row) if row else None), claimed
+
+
 async def create_training_run(payload: dict[str, Any]) -> dict[str, Any]:
     await ensure()
     now = _now()

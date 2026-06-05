@@ -2,6 +2,10 @@ const state = {
   overview: null,
   diagnostics: null,
   loading: false,
+  modelPage: 1,
+  modelPageSize: 6,
+  trainingTab: "single",
+  operation: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -49,12 +53,147 @@ function escapeHtml(value) {
   });
 }
 
-function showToast(message) {
+function showToast(message, duration = 2200) {
   const toast = $("toast");
   toast.textContent = message;
   toast.classList.add("show");
   window.clearTimeout(showToast.timer);
-  showToast.timer = window.setTimeout(() => toast.classList.remove("show"), 2200);
+  showToast.timer = window.setTimeout(() => toast.classList.remove("show"), duration);
+}
+
+function operationStatusLayer() {
+  let layer = document.querySelector(".operation-status");
+  if (!layer) {
+    layer = document.createElement("div");
+    layer.className = "operation-status";
+    layer.setAttribute("role", "status");
+    layer.setAttribute("aria-live", "polite");
+    layer.innerHTML = `
+      <div class="operation-status-head">
+        <strong data-operation-title></strong>
+        <span data-operation-percent></span>
+      </div>
+      <div class="operation-status-message" data-operation-message></div>
+      <div class="operation-progress" aria-hidden="true">
+        <div data-operation-progress></div>
+      </div>
+      <div class="operation-status-meta" data-operation-meta></div>
+    `;
+    document.body.appendChild(layer);
+  }
+  return layer;
+}
+
+function formatElapsed(ms) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function renderOperationStatus() {
+  const operation = state.operation;
+  const layer = operationStatusLayer();
+  if (!operation) {
+    return;
+  }
+  const elapsedMs = Date.now() - operation.startedAt;
+  let progress = operation.progress;
+  if (operation.estimateSeconds) {
+    progress = Math.min(95, Math.max(progress || 6, (elapsedMs / (operation.estimateSeconds * 1000)) * 90));
+  }
+  const percent = operation.complete ? 100 : Math.round(progress || 0);
+  layer.querySelector("[data-operation-title]").textContent = operation.title || "正在处理";
+  layer.querySelector("[data-operation-percent]").textContent = operation.indeterminate ? "进行中" : `${percent}%`;
+  layer.querySelector("[data-operation-message]").textContent = operation.message || "";
+  layer.querySelector("[data-operation-meta]").textContent = `${operation.detail ? `${operation.detail} · ` : ""}已等待 ${formatElapsed(elapsedMs)} · 预计进度仅供参考，完成后会自动刷新`;
+  layer.querySelector("[data-operation-progress]").style.width = operation.indeterminate ? "38%" : `${percent}%`;
+  layer.classList.toggle("indeterminate", Boolean(operation.indeterminate));
+  layer.classList.add("show");
+}
+
+function showOperationStatus(message, options = {}) {
+  const layer = operationStatusLayer();
+  window.clearInterval(state.operation?.timer);
+  state.operation = {
+    title: options.title || "正在处理",
+    message,
+    detail: options.detail || "",
+    estimateSeconds: Number(options.estimateSeconds || 0),
+    progress: Number(options.progress || 0),
+    indeterminate: Boolean(options.indeterminate),
+    complete: false,
+    startedAt: Date.now(),
+    timer: null,
+  };
+  renderOperationStatus();
+  state.operation.timer = window.setInterval(renderOperationStatus, 1000);
+  layer.classList.add("show");
+}
+
+function updateOperationStatus(message, options = {}) {
+  if (!state.operation) {
+    showOperationStatus(message, options);
+    return;
+  }
+  state.operation.message = message || state.operation.message;
+  state.operation.title = options.title || state.operation.title;
+  state.operation.detail = options.detail || state.operation.detail;
+  if (options.estimateSeconds !== undefined) {
+    state.operation.estimateSeconds = Number(options.estimateSeconds || 0);
+  }
+  if (options.progress !== undefined) {
+    state.operation.progress = Number(options.progress || 0);
+  }
+  if (options.indeterminate !== undefined) {
+    state.operation.indeterminate = Boolean(options.indeterminate);
+  }
+  renderOperationStatus();
+}
+
+function completeOperationStatus(message) {
+  if (!state.operation) {
+    return;
+  }
+  state.operation.message = message || state.operation.message;
+  state.operation.progress = 100;
+  state.operation.complete = true;
+  state.operation.indeterminate = false;
+  window.clearInterval(state.operation.timer);
+  state.operation.timer = null;
+  renderOperationStatus();
+}
+
+function hideOperationStatus() {
+  const layer = document.querySelector(".operation-status");
+  window.clearInterval(state.operation?.timer);
+  state.operation = null;
+  if (layer) {
+    layer.classList.remove("show");
+    layer.classList.remove("indeterminate");
+  }
+}
+
+function busyButtons(ids, label) {
+  const buttons = ids.map((id) => $(id)).filter(Boolean);
+  buttons.forEach((button) => {
+    if (!button.dataset.originalText) {
+      button.dataset.originalText = button.textContent;
+    }
+    button.textContent = label;
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+  });
+  return buttons;
+}
+
+function restoreButtons(buttons) {
+  buttons.forEach((button) => {
+    button.textContent = button.dataset.originalText || button.textContent;
+    delete button.dataset.originalText;
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+  });
 }
 
 function bindDatePickers() {
@@ -71,6 +210,101 @@ function bindDatePickers() {
   });
 }
 
+function normalizeHelpTips(root = document) {
+  root.querySelectorAll(".help-tip").forEach((tip) => {
+    const value =
+      tip.dataset.tooltip ||
+      tip.getAttribute("title") ||
+      tip.querySelector(".help-popover")?.textContent?.trim() ||
+      tip.getAttribute("aria-label") ||
+      "";
+    if (value) {
+      tip.dataset.tooltip = value;
+      tip.setAttribute("aria-label", value);
+    }
+    tip.removeAttribute("title");
+  });
+}
+
+function tooltipLayer() {
+  let layer = document.querySelector(".help-tooltip-layer");
+  if (!layer) {
+    layer = document.createElement("div");
+    layer.className = "help-tooltip-layer";
+    layer.setAttribute("role", "tooltip");
+    document.body.appendChild(layer);
+  }
+  return layer;
+}
+
+function showHelpTooltip(target) {
+  normalizeHelpTips(target.parentElement || document);
+  const value = target.dataset.tooltip || "";
+  if (!value) {
+    return;
+  }
+  const layer = tooltipLayer();
+  layer.textContent = value;
+  layer.classList.remove("below", "show");
+  layer.style.left = "0px";
+  layer.style.top = "0px";
+  layer.style.visibility = "hidden";
+  layer.classList.add("show");
+
+  const margin = 12;
+  const gap = 9;
+  const targetRect = target.getBoundingClientRect();
+  const layerRect = layer.getBoundingClientRect();
+  const maxLeft = Math.max(margin, window.innerWidth - layerRect.width - margin);
+  const left = Math.min(maxLeft, Math.max(margin, targetRect.left + targetRect.width / 2 - layerRect.width / 2));
+  let top = targetRect.top - layerRect.height - gap;
+  if (top < margin) {
+    top = targetRect.bottom + gap;
+    layer.classList.add("below");
+  }
+
+  layer.style.left = `${Math.round(left)}px`;
+  layer.style.top = `${Math.round(top)}px`;
+  layer.style.visibility = "visible";
+}
+
+function hideHelpTooltip() {
+  const layer = document.querySelector(".help-tooltip-layer");
+  if (layer) {
+    layer.classList.remove("show", "below");
+    layer.style.visibility = "hidden";
+  }
+}
+
+function bindHelpTooltips() {
+  normalizeHelpTips();
+  document.addEventListener("pointerover", (event) => {
+    const target = event.target.closest(".help-tip");
+    if (target) {
+      showHelpTooltip(target);
+    }
+  });
+  document.addEventListener("pointerout", (event) => {
+    const target = event.target.closest(".help-tip");
+    if (target && !target.contains(event.relatedTarget)) {
+      hideHelpTooltip();
+    }
+  });
+  document.addEventListener("focusin", (event) => {
+    const target = event.target.closest(".help-tip");
+    if (target) {
+      showHelpTooltip(target);
+    }
+  });
+  document.addEventListener("focusout", (event) => {
+    if (event.target.closest(".help-tip")) {
+      hideHelpTooltip();
+    }
+  });
+  window.addEventListener("resize", hideHelpTooltip);
+  document.addEventListener("scroll", hideHelpTooltip, true);
+}
+
 function fromTradeDate(value) {
   const raw = text(value, "").replaceAll("-", "");
   if (!/^\d{8}$/.test(raw)) {
@@ -81,6 +315,33 @@ function fromTradeDate(value) {
 
 function toTradeDate(value) {
   return text(value, "").replaceAll("-", "");
+}
+
+function parseTradeDate(value) {
+  const raw = text(value, "").replaceAll("-", "");
+  if (!/^\d{8}$/.test(raw)) {
+    return null;
+  }
+  const date = new Date(Number(raw.slice(0, 4)), Number(raw.slice(4, 6)) - 1, Number(raw.slice(6, 8)));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function weekdayCount(startValue, endValue) {
+  const start = parseTradeDate(startValue);
+  const end = parseTradeDate(endValue);
+  if (!start || !end || start > end) {
+    return 0;
+  }
+  let count = 0;
+  const current = new Date(start.getTime());
+  while (current <= end) {
+    const day = current.getDay();
+    if (day !== 0 && day !== 6) {
+      count += 1;
+    }
+    current.setDate(current.getDate() + 1);
+  }
+  return count;
 }
 
 function emptyRow(message, columns) {
@@ -120,7 +381,7 @@ function helpTip(key, fallback = "") {
     return "";
   }
   return `
-    <span class="help-tip" tabindex="0" title="${escapeHtml(value)}" aria-label="${escapeHtml(value)}">
+    <span class="help-tip" tabindex="0" data-tooltip="${escapeHtml(value)}" aria-label="${escapeHtml(value)}">
       ?
       <span class="help-popover" role="tooltip">${escapeHtml(value)}</span>
     </span>
@@ -153,23 +414,149 @@ function modelActions(item) {
 function renderModels(models) {
   const body = $("modelsBody");
   if (!models.length) {
-    body.innerHTML = emptyRow("还没有模型。先点击“新建训练任务”，再点击“执行待训练任务”。", 6);
+    body.innerHTML = emptyRow("暂无其它模型版本。训练候选模型后会显示在这里。", 3);
+    renderModelPagination(0, 0, 0, 1);
     return;
   }
-  body.innerHTML = models
-    .map(
-      (item) => `
+  const totalPages = Math.max(1, Math.ceil(models.length / state.modelPageSize));
+  state.modelPage = Math.min(Math.max(1, state.modelPage), totalPages);
+  const start = (state.modelPage - 1) * state.modelPageSize;
+  const pageItems = models.slice(start, start + state.modelPageSize);
+  body.innerHTML = pageItems
+    .map((item) => {
+      const summary = metricSummary(item.metrics || {});
+      const feature = featureDefinition(item.feature_set);
+      const label = labelDefinition(item.label_set);
+      return `
         <tr>
-          <td title="${escapeHtml(item.model_id)}">${escapeHtml(shortId(item.name || item.model_id))}</td>
-          <td>${badge(item.status)}</td>
-          <td>${escapeHtml(item.feature_set)}</td>
-          <td>${escapeHtml(item.label_set)}</td>
-          <td>${escapeHtml(item.created_at)}</td>
-          <td>${modelActions(item)}</td>
+          <td class="model-cell-main" title="${escapeHtml(item.model_id)}">
+            <strong class="model-row-title">${escapeHtml(item.name || item.model_id)}</strong>
+            <small class="model-row-id">${escapeHtml(shortId(item.model_id))}</small>
+            <div class="model-sample-strip">
+              <span><b>总样本</b>${escapeHtml(text(summary.sampleCount))}</span>
+              <span><b>验证</b>${escapeHtml(text(summary.validationSampleCount))}</span>
+            </div>
+            ${renderModelMetricBars(summary, "compact")}
+          </td>
+          <td class="model-cell-definition">
+            <div class="model-definition-pair">
+              <strong>${escapeHtml(item.feature_set)}</strong>
+              <small>${escapeHtml(feature?.description || "未配置特征集说明")}</small>
+            </div>
+            <div class="model-definition-pair">
+              <strong>${escapeHtml(item.label_set)}</strong>
+              <small>${escapeHtml(label?.description || "未配置标签集说明")}</small>
+            </div>
+          </td>
+          <td class="model-cell-side">
+            <div class="model-side-top">
+              ${badge(item.status)}
+              <small>${escapeHtml(item.created_at)}</small>
+            </div>
+            ${modelActions(item)}
+          </td>
         </tr>
-      `,
-    )
+      `;
+    })
     .join("");
+  renderModelPagination(models.length, start + 1, Math.min(start + pageItems.length, models.length), totalPages);
+}
+
+function modelMetricRows(summary) {
+  const lift = numberValue(summary.top50Lift);
+  const loss = numberValue(summary.logLoss);
+  const lossScore = loss === null ? 0 : Math.max(0, Math.min(100, (1 - loss) * 100));
+  const liftWidth = lift === null ? 0 : Math.max(0, Math.min(100, Math.abs(lift) * 200));
+  return [
+    { label: "F1", value: percent(summary.f1), width: boundedPct(summary.f1), tone: "brand" },
+    { label: "Top50", value: percent(summary.top50HitRate), width: boundedPct(summary.top50HitRate), tone: "green" },
+    {
+      label: "提升",
+      value: signedPct(lift !== null ? lift * 100 : null),
+      width: liftWidth,
+      tone: lift === null ? "neutral" : lift >= 0 ? "green" : "red",
+    },
+    { label: "Loss", value: decimal(summary.logLoss, 4), width: lossScore, tone: "amber" },
+  ];
+}
+
+function renderModelMetricBars(summary, variant = "compact") {
+  const rows = modelMetricRows(summary);
+  const visibleRows = variant === "compact" ? rows.filter((row) => row.label !== "Loss") : rows;
+  return `
+    <div class="model-metric-bars ${escapeHtml(variant)}">
+      ${visibleRows
+        .map(
+          (row) => `
+            <div class="model-metric-bar">
+              <div class="metric-bar-head">
+                <span>${escapeHtml(row.label)}</span>
+                <strong>${escapeHtml(row.value)}</strong>
+              </div>
+              <div class="metric-bar-track">
+                <span class="metric-bar-fill ${escapeHtml(row.tone)}" style="--value: ${escapeHtml(row.width)};"></span>
+              </div>
+            </div>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderModelPagination(total, start, end, totalPages) {
+  const container = $("modelsPagination");
+  if (!container) {
+    return;
+  }
+  if (!total) {
+    container.innerHTML = "";
+    return;
+  }
+  const page = state.modelPage;
+  container.innerHTML = `
+    <div class="pagination-info">第 ${escapeHtml(page)} / ${escapeHtml(totalPages)} 页，显示 ${escapeHtml(start)}-${escapeHtml(end)}，共 ${escapeHtml(total)} 个模型</div>
+    <div class="pagination-actions">
+      <button type="button" data-model-page-action="first" ${page <= 1 ? "disabled" : ""}>首页</button>
+      <button type="button" data-model-page-action="prev" ${page <= 1 ? "disabled" : ""}>上一页</button>
+      <button type="button" data-model-page-action="next" ${page >= totalPages ? "disabled" : ""}>下一页</button>
+      <button type="button" data-model-page-action="last" ${page >= totalPages ? "disabled" : ""}>末页</button>
+    </div>
+  `;
+}
+
+function changeModelPage(action) {
+  const models = modelListItems();
+  const totalPages = Math.max(1, Math.ceil(models.length / state.modelPageSize));
+  if (action === "first") {
+    state.modelPage = 1;
+  } else if (action === "prev") {
+    state.modelPage = Math.max(1, state.modelPage - 1);
+  } else if (action === "next") {
+    state.modelPage = Math.min(totalPages, state.modelPage + 1);
+  } else if (action === "last") {
+    state.modelPage = totalPages;
+  }
+  renderModels(models);
+}
+
+function modelListItems() {
+  const models = state.overview?.models || [];
+  const active = state.overview?.active_model || models.find((item) => item.status === "active");
+  return active ? models.filter((item) => item.model_id !== active.model_id) : models;
+}
+
+function findDefinition(group, id) {
+  const items = state.overview?.[group] || [];
+  return items.find((item) => item.id === id) || null;
+}
+
+function featureDefinition(id) {
+  return findDefinition("feature_sets", id);
+}
+
+function labelDefinition(id) {
+  return findDefinition("label_sets", id);
 }
 
 function metricSummary(metrics) {
@@ -401,10 +788,18 @@ function previousYearDate(value) {
   return `${year}${raw.slice(4)}`;
 }
 
+function todayTradeDate() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}${month}${day}`;
+}
+
 function syncHistoryDefaults(workflow) {
   const start = $("backfillStartInput");
   const end = $("backfillEndInput");
-  const latest = workflow.latest_market_date || workflow.suggested_prediction_date || "";
+  const latest = workflow.latest_market_date || workflow.suggested_prediction_date || todayTradeDate();
   if (start && !start.value && latest) {
     start.placeholder = fromTradeDate(previousYearDate(latest)) || "选择开始日期";
   }
@@ -413,7 +808,7 @@ function syncHistoryDefaults(workflow) {
   }
   const hint = $("historyBackfillHint");
   if (hint) {
-    const latestText = latest || "暂无";
+    const latestText = workflow.latest_market_date || "本地暂无行情";
     hint.textContent = `当前最新行情日 ${latestText}。历史越长，训练/验证越能覆盖不同行情阶段；批量训练会按 Top50 提升自动选优。`;
   }
 }
@@ -424,18 +819,74 @@ function syncWorkflowButtons() {
   }
 }
 
+function renderActiveModelPanel(model) {
+  const container = $("activeModelPanel");
+  if (!container) {
+    return;
+  }
+  if (!model) {
+    container.innerHTML = `
+      <div class="active-model-empty">
+        <div>
+          <span>当前使用中</span>
+          <h3>暂无使用中模型</h3>
+          <p>先训练候选模型，通过审核后再上线。</p>
+        </div>
+      </div>
+    `;
+    return;
+  }
+  const summary = metricSummary(model.metrics || {});
+  const feature = featureDefinition(model.feature_set);
+  const label = labelDefinition(model.label_set);
+  container.innerHTML = `
+    <div class="active-model-layout">
+      <div class="active-model-main">
+        <div class="active-model-title">
+          <span>当前使用中</span>
+          <h3>${escapeHtml(model.name || model.model_id)}</h3>
+          <p>${escapeHtml(shortId(model.model_id))} · ${escapeHtml(model.created_at || "-")}</p>
+        </div>
+        <div class="active-model-tags">
+          ${badge(model.status)}
+          <span>${escapeHtml(model.model_type || "-")}</span>
+          <span>${escapeHtml(model.feature_set || "-")}</span>
+          <span>${escapeHtml(model.label_set || "-")}</span>
+        </div>
+        <div class="model-sample-strip active-samples">
+          <span><b>总样本</b>${escapeHtml(text(summary.sampleCount))}</span>
+          <span><b>验证样本</b>${escapeHtml(text(summary.validationSampleCount))}</span>
+          <span><b>市场基准</b>${escapeHtml(percent(summary.marketHitRate))}</span>
+        </div>
+        <div class="model-detail-notes">
+          <p><b>特征集说明：</b>${escapeHtml(feature?.description || "未配置特征集说明")}</p>
+          <p><b>标签集说明：</b>${escapeHtml(label?.description || "未配置标签集说明")}</p>
+        </div>
+      </div>
+      <div class="active-model-chart">
+        ${renderModelMetricBars(summary, "featured")}
+      </div>
+      <div class="active-model-actions">
+        ${modelActions(model)}
+      </div>
+    </div>
+  `;
+}
+
 function renderOverview(payload) {
   const models = payload.models || [];
   const runs = payload.training_runs || [];
   const stages = payload.pipelines?.stages || [];
-  const activeModel = payload.active_model;
+  const activeModel = payload.active_model || models.find((item) => item.status === "active");
 
   $("activeModel").textContent = activeModel?.name || activeModel?.model_id || "暂无";
   $("modelCount").textContent = models.length;
   $("runCount").textContent = runs.length;
   $("stageCount").textContent = stages.length;
 
-  renderModels(models);
+  renderActiveModelPanel(activeModel);
+  renderStepGuide(payload);
+  renderModels(modelListItems());
   renderRuns(runs);
   renderStages(stages);
   renderEvents(payload.model_events || []);
@@ -446,6 +897,7 @@ function renderOverview(payload) {
   renderWorkflow(payload);
   renderDiagnostics(payload);
   renderCoach(payload);
+  normalizeHelpTips();
 }
 
 function findFirst(items, statuses) {
@@ -456,6 +908,219 @@ function setStep(activeStep) {
   document.querySelectorAll(".step-card").forEach((item) => {
     item.classList.toggle("active", item.dataset.step === activeStep);
   });
+}
+
+function stepState(status) {
+  const mapping = {
+    current: { label: "现在做", className: "current" },
+    done: { label: "已完成", className: "done" },
+    waiting: { label: "等前一步", className: "waiting" },
+  };
+  return mapping[status] || mapping.waiting;
+}
+
+function guideActionButton(label, action) {
+  return `<button type="button" data-guide-action="${escapeHtml(action)}">${escapeHtml(label)}</button>`;
+}
+
+function guideViewButton(label, view, trainingTab = "") {
+  const tabAttr = trainingTab ? ` data-guide-training-tab="${escapeHtml(trainingTab)}"` : "";
+  return `<button type="button" data-guide-view="${escapeHtml(view)}"${tabAttr}>${escapeHtml(label)}</button>`;
+}
+
+function renderStepGuide(payload) {
+  const container = $("stepGuide");
+  if (!container) {
+    return;
+  }
+  const models = payload.models || [];
+  const runs = payload.training_runs || [];
+  const workflow = payload.workflow || {};
+  const performance = payload.model_performance || [];
+  const queued = findFirst(runs, ["queued", "failed"]);
+  const candidate = findFirst(models, ["candidate"]);
+  const approved = findFirst(models, ["approved"]);
+  const hasActive = Boolean(payload.active_model);
+  const hasMarketData = Boolean(workflow.latest_market_date);
+  const hasPrediction = Boolean(workflow.latest_prediction_date);
+  const validationReady = Boolean(workflow.validation_ready);
+  const hasValidation = performance.some((item) => Number(item.validation_count || 0) > 0);
+
+  const steps = [
+    hasMarketData
+      ? {
+          step: "data",
+          number: 1,
+          title: "准备训练样本",
+          place: "训练任务 / 多模型选优",
+          status: "done",
+          detail: `本地已有行情缓存，最新行情日 ${workflow.latest_market_date}。后续训练会从这些日线数据里构造样本。`,
+          actions: [guideViewButton("继续回填", "training", "matrix")],
+        }
+      : {
+          step: "data",
+          number: 1,
+          title: "先回填历史行情",
+          place: "训练任务 / 多模型选优",
+          status: "current",
+          detail: "训练样本来自本地日线缓存。清库或首次使用后，必须先回填历史行情，再开始训练。",
+          actions: [guideViewButton("去回填历史", "training", "matrix")],
+        },
+    queued
+      ? {
+          step: "train",
+          number: 2,
+          title: "执行训练任务",
+          place: "工作台 / 训练任务",
+          status: hasMarketData ? "current" : "waiting",
+          detail: hasMarketData
+            ? "你已经建好了训练任务，现在点“执行待训练任务”就会开始训练，并生成候选模型。"
+            : "你已经建好了训练任务，但本地行情为空。先回填历史行情，再执行训练。",
+          actions: hasMarketData
+            ? [guideActionButton("执行待训练任务", "runQueued"), guideViewButton("去训练页", "training", "records")]
+            : [guideViewButton("去回填历史", "training", "matrix")],
+        }
+      : candidate || approved || hasActive
+        ? {
+            step: "train",
+            number: 2,
+            title: "生成候选模型",
+            place: "工作台 / 训练任务",
+            status: "done",
+            detail: "训练已经跑过了。这一步以后想重训时，再回“训练任务”页新建并执行任务。",
+            actions: [guideViewButton("去训练页", "training")],
+          }
+        : {
+            step: "train",
+            number: 2,
+            title: "先训练一个候选模型",
+            place: "工作台 / 训练任务",
+            status: hasMarketData ? "current" : "waiting",
+            detail: hasMarketData
+              ? "分步操作就是先点“新建训练任务”，再点“执行待训练任务”。想省事可以直接点“一键训练并上线”。"
+              : "先完成历史行情回填。回填后再创建训练任务，模型才有样本可学。",
+            actions: hasMarketData
+              ? [guideActionButton("新建训练任务", "queueTrain"), guideActionButton("一键训练并上线", "trainApproveActivate")]
+              : [guideViewButton("去回填历史", "training", "matrix")],
+          },
+    candidate
+      ? {
+          step: "approve",
+          number: 3,
+          title: "审核候选模型",
+          place: "模型版本",
+          status: "current",
+          detail: "去“模型版本”页，先看验证 F1、Top50 和验证样本数，确认没有明显异常后再点“通过”。",
+          actions: [guideActionButton("通过候选模型", "approveCandidate"), guideViewButton("去模型版本", "models")],
+        }
+      : approved || hasActive
+        ? {
+            step: "approve",
+            number: 3,
+            title: "审核候选模型",
+            place: "模型版本",
+            status: "done",
+            detail: "候选模型已经审核通过。如果后面重新训练出新候选，再回“模型版本”页处理。",
+            actions: [guideViewButton("去模型版本", "models")],
+          }
+        : {
+            step: "approve",
+            number: 3,
+            title: "审核候选模型",
+            place: "模型版本",
+            status: "waiting",
+            detail: "先完成训练。训练结束后，这里会出现“候选模型”，再去点“通过”。",
+            actions: [guideViewButton("去模型版本", "models")],
+          },
+    approved
+      ? {
+          step: "activate",
+          number: 4,
+          title: "上线启用模型",
+          place: "模型版本",
+          status: "current",
+          detail: "审核通过后，到“模型版本”页点“上线”。上线后，预测和验证都会使用这个模型。",
+          actions: [guideActionButton("上线已通过模型", "activateApproved"), guideViewButton("去模型版本", "models")],
+        }
+      : hasActive
+        ? {
+            step: "activate",
+            number: 4,
+            title: "上线启用模型",
+            place: "模型版本",
+            status: "done",
+            detail: "已经有启用中的模型了。如果要换版本，可以回“模型版本”页继续切换或回滚。",
+            actions: [guideViewButton("去模型版本", "models")],
+          }
+        : {
+            step: "activate",
+            number: 4,
+            title: "上线启用模型",
+            place: "模型版本",
+            status: "waiting",
+            detail: "先把候选模型审核通过。通过后，这一步才会出现可点的“上线”按钮。",
+            actions: [guideViewButton("去模型版本", "models")],
+          },
+    !hasActive
+      ? {
+          step: "monitor",
+          number: 5,
+          title: "预测并验证",
+          place: "预测验证",
+          status: "waiting",
+          detail: "先完成前面 3 步。模型上线后，再去“预测验证”页生成预测和做次日验证。",
+          actions: [guideViewButton("去预测验证", "predict")],
+        }
+      : validationReady
+        ? {
+            step: "monitor",
+            number: 5,
+            title: "验证最近一次预测",
+            place: "预测验证",
+            status: "current",
+            detail: "系统已经找到最近可验证的预测日期，现在去“预测验证”页点“验证最近可验证预测”。",
+            actions: [guideActionButton("验证最近可验证预测", "runValidation"), guideViewButton("去预测验证", "predict")],
+          }
+        : hasPrediction
+          ? {
+              step: "monitor",
+              number: 5,
+              title: "等待下一交易日后验证",
+              place: "预测验证",
+              status: hasValidation ? "done" : "current",
+              detail: "最近一次预测已经生成。等下一交易日数据到齐后，再回“预测验证”页点“验证最近可验证预测”。",
+              actions: [guideViewButton("去预测验证", "predict"), guideActionButton("继续生成预测", "runPrediction")],
+            }
+          : {
+              step: "monitor",
+              number: 5,
+              title: "生成最新预测",
+              place: "预测验证",
+              status: "current",
+              detail: "模型已经上线。现在去“预测验证”页点“生成最新预测”，等下一交易日后再做验证。",
+              actions: [guideActionButton("生成最新预测", "runPrediction"), guideViewButton("去预测验证", "predict")],
+            },
+  ];
+
+  container.innerHTML = steps
+    .map((item) => {
+      const state = stepState(item.status);
+      return `
+        <article class="step-card ${escapeHtml(state.className)}" data-step="${escapeHtml(item.step)}">
+          <div class="step-head">
+            <b>${escapeHtml(item.number)}</b>
+            <div class="step-copy">
+              <strong>${escapeHtml(item.title)}</strong>
+              <span class="step-place">${escapeHtml(item.place)}</span>
+            </div>
+            <span class="step-state ${escapeHtml(state.className)}">${escapeHtml(state.label)}</span>
+          </div>
+          <p>${escapeHtml(item.detail)}</p>
+          <div class="step-actions">${item.actions.join("")}</div>
+        </article>
+      `;
+    })
+    .join("");
 }
 
 function setView(view) {
@@ -474,10 +1139,40 @@ function setView(view) {
   }
 }
 
+function setTrainingTab(tab) {
+  const target = document.querySelector(`[data-training-panel="${tab}"]`);
+  if (!target) {
+    return;
+  }
+  state.trainingTab = tab;
+  document.querySelectorAll("[data-training-tab]").forEach((item) => {
+    item.classList.toggle("active", item.dataset.trainingTab === tab);
+  });
+  document.querySelectorAll("[data-training-panel]").forEach((item) => {
+    item.classList.toggle("active", item.dataset.trainingPanel === tab);
+  });
+}
+
+function openAdminView(view, trainingTab = "") {
+  setView(view);
+  if (view === "training" && trainingTab) {
+    setTrainingTab(trainingTab);
+  }
+}
+
+function syncViewFromHash() {
+  const initialView = window.location.hash.replace("#", "");
+  if (initialView) {
+    setView(initialView);
+  }
+}
+
 function renderCoach(payload) {
   const models = payload.models || [];
   const runs = payload.training_runs || [];
+  const workflow = payload.workflow || {};
   const hasActive = Boolean(payload.active_model);
+  const hasMarketData = Boolean(workflow.latest_market_date);
   const queued = findFirst(runs, ["queued", "failed"]);
   const candidate = findFirst(models, ["candidate"]);
   const approved = findFirst(models, ["approved"]);
@@ -485,6 +1180,13 @@ function renderCoach(payload) {
   const hasValidation = performance.some((item) => Number(item.validation_count || 0) > 0);
   const actions = $("coachActions");
 
+  if (!hasMarketData) {
+    $("coachTitle").textContent = "先回填历史行情";
+    $("coachText").textContent = "训练样本来自本地日线缓存。现在缓存为空，先去回填历史日线，再创建训练任务。";
+    actions.innerHTML = `<button type="button" data-coach-action="openBackfill">去回填历史</button>`;
+    setStep("data");
+    return;
+  }
   if (queued) {
     $("coachTitle").textContent = "有训练任务等待执行";
     $("coachText").textContent = "点击执行后，系统会从本地历史行情里生成一个候选模型。";
@@ -494,7 +1196,7 @@ function renderCoach(payload) {
   }
   if (candidate) {
     $("coachTitle").textContent = "有候选模型等待审核";
-    $("coachText").textContent = "新手可以先点通过，后面再用表现数据决定是否保留。";
+    $("coachText").textContent = "先去模型版本页看验证 F1、Top50 和验证样本数，确认没有明显异常后再点通过。";
     actions.innerHTML = `<button type="button" data-coach-action="approveCandidate">通过候选</button>`;
     setStep("approve");
     return;
@@ -1048,16 +1750,21 @@ async function createTrainingRun() {
 }
 
 async function queueTrainingRun() {
-  const button = $("queueTrainBtn");
-  button.disabled = true;
+  const buttons = ["queueTrainBtn", "queueTrainBtnTraining"].map((id) => $(id)).filter(Boolean);
+  buttons.forEach((button) => {
+    button.disabled = true;
+  });
   try {
     const item = await createTrainingRun();
     showToast(`已创建任务 ${shortId(item?.run_id || "")}`);
     await loadOverview({ silent: true });
+    setTrainingTab("records");
   } catch (error) {
     showToast(error.message || "创建失败");
   } finally {
-    button.disabled = false;
+    buttons.forEach((button) => {
+      button.disabled = false;
+    });
   }
 }
 
@@ -1070,15 +1777,35 @@ function firstModel(statuses) {
 }
 
 async function runFirstQueuedTraining() {
-  const run = firstRun(["queued", "failed"]);
-  if (!run) {
-    showToast("没有待执行的训练任务");
-    return;
+  const buttons = busyButtons(["runQueuedBtn", "runQueuedBtnTraining"], "训练中...");
+  let finished = false;
+  try {
+    const run = firstRun(["queued", "failed"]);
+    if (!run) {
+      showToast("没有待执行的训练任务");
+      return;
+    }
+    showOperationStatus("正在训练模型，样本多时可能需要几分钟。", {
+      title: "模型训练",
+      detail: "正在构造样本、训练并保存候选模型",
+      estimateSeconds: 240,
+      progress: 8,
+    });
+    await runTraining(run.run_id, { showSuccessToast: false });
+    completeOperationStatus("训练完成，正在刷新训练记录");
+    finished = true;
+    setTrainingTab("records");
+  } finally {
+    if (finished) {
+      window.setTimeout(hideOperationStatus, 900);
+    } else {
+      hideOperationStatus();
+    }
+    restoreButtons(buttons);
   }
-  await runTraining(run.run_id);
 }
 
-async function runTraining(runId, { reload = true } = {}) {
+async function runTraining(runId, { reload = true, showSuccessToast = true, showErrorToast = true } = {}) {
   try {
     const res = await fetch(`/api/admin/training-runs/${encodeURIComponent(runId)}/run`, {
       method: "POST",
@@ -1087,41 +1814,57 @@ async function runTraining(runId, { reload = true } = {}) {
     if (!res.ok) {
       throw new Error(payload.detail || `执行失败：${res.status}`);
     }
-    showToast(`训练完成 ${shortId(payload.model?.model_id || "")}`);
+    if (showSuccessToast) {
+      showToast(`训练完成 ${shortId(payload.model?.model_id || "")}`);
+    }
     if (reload) {
       await loadOverview({ silent: true });
     }
     return payload;
   } catch (error) {
-    showToast(error.message || "执行失败");
+    if (showErrorToast) {
+      showToast(error.message || "执行失败");
+    }
     throw error;
   }
 }
 
 async function trainApproveActivate() {
-  const button = $("trainApproveActivateBtn");
-  button.disabled = true;
+  const buttons = busyButtons(["trainApproveActivateBtn", "trainApproveActivateBtnTraining"], "处理中...");
+  let finished = false;
   try {
-    showToast("正在创建训练任务");
+    showOperationStatus("正在创建训练任务。", {
+      title: "一键训练并上线",
+      detail: "创建任务、训练模型、审批候选、激活上线",
+      estimateSeconds: 300,
+      progress: 6,
+    });
     const run = await createTrainingRun();
-    showToast("正在训练模型");
-    const trained = await runTraining(run.run_id, { reload: false });
+    updateOperationStatus("正在训练模型，样本多时可能需要几分钟。", { progress: 18 });
+    const trained = await runTraining(run.run_id, { reload: false, showSuccessToast: false, showErrorToast: false });
     const modelId = trained?.model?.model_id;
     if (!modelId) {
       throw new Error("训练完成但没有返回模型编号");
     }
-    showToast("正在通过候选模型");
-    await mutateModel(modelId, "approve", { reload: false });
-    showToast("正在上线模型");
-    await mutateModel(modelId, "activate", { reload: false });
+    updateOperationStatus("正在通过候选模型。", { progress: 88 });
+    await mutateModel(modelId, "approve", { reload: false, showSuccessToast: false, showErrorToast: false });
+    updateOperationStatus("正在上线模型。", { progress: 94 });
+    await mutateModel(modelId, "activate", { reload: false, showSuccessToast: false, showErrorToast: false });
+    updateOperationStatus("正在刷新最新模型状态。", { progress: 98 });
     await loadOverview({ silent: true });
     setView("predict");
-    showToast("模型已上线，可以生成预测");
+    completeOperationStatus("模型已上线，可以生成预测");
+    finished = true;
   } catch (error) {
     showToast(error.message || "一键流程失败");
     await loadOverview({ silent: true });
   } finally {
-    button.disabled = false;
+    if (finished) {
+      window.setTimeout(hideOperationStatus, 900);
+    } else {
+      hideOperationStatus();
+    }
+    restoreButtons(buttons);
   }
 }
 
@@ -1130,7 +1873,7 @@ function backfillStartDate() {
   if (value) {
     return value;
   }
-  const latest = state.overview?.workflow?.latest_market_date || state.overview?.workflow?.suggested_prediction_date || "";
+  const latest = state.overview?.workflow?.latest_market_date || state.overview?.workflow?.suggested_prediction_date || todayTradeDate();
   return previousYearDate(latest) || "";
 }
 
@@ -1139,10 +1882,8 @@ function backfillEndDate() {
 }
 
 async function backfillHistory() {
-  const buttons = ["backfillHistoryBtn"].map((id) => $(id)).filter(Boolean);
-  buttons.forEach((button) => {
-    button.disabled = true;
-  });
+  const buttons = busyButtons(["backfillHistoryBtn"], "回填中...");
+  let finished = false;
   try {
     const startDate = backfillStartDate();
     if (!startDate) {
@@ -1156,7 +1897,15 @@ async function backfillHistory() {
     if (endDate) {
       body.end_date = endDate;
     }
-    showToast("正在回填历史日线");
+    const fetchEndDate = endDate || state.overview?.workflow?.latest_market_date || todayTradeDate();
+    const days = weekdayCount(startDate, fetchEndDate);
+    const cappedDays = Math.min(days || body.max_days, body.max_days);
+    showOperationStatus("正在回填历史日线，会按交易日逐天拉取数据。", {
+      title: "历史行情回填",
+      detail: cappedDays ? `预计检查 ${cappedDays} 个工作日` : "正在检查日期范围",
+      estimateSeconds: Math.max(45, cappedDays * 8),
+      progress: 5,
+    });
     const res = await fetch("/api/admin/history/backfill", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -1166,28 +1915,37 @@ async function backfillHistory() {
     if (!res.ok) {
       throw new Error(payload.detail || `回填失败：${res.status}`);
     }
-    showToast(`回填完成，新增 ${payload.fetched_days || 0} 天，缓存 ${payload.cached_days || 0} 天`);
+    completeOperationStatus(`回填完成：新增 ${payload.fetched_days || 0} 天，缓存 ${payload.cached_days || 0} 天`);
+    finished = true;
     await loadOverview({ silent: true });
     return payload;
   } catch (error) {
     showToast(error.message || "回填失败");
     throw error;
   } finally {
-    buttons.forEach((button) => {
-      button.disabled = false;
-    });
+    if (finished) {
+      window.setTimeout(hideOperationStatus, 900);
+    } else {
+      hideOperationStatus();
+    }
+    restoreButtons(buttons);
   }
 }
 
 async function runTrainingMatrix() {
-  const buttons = ["runTrainingMatrixBtn", "runTrainingMatrixBtnTraining", "runTrainingMatrixBtnPanel"]
-    .map((id) => $(id))
-    .filter(Boolean);
-  buttons.forEach((button) => {
-    button.disabled = true;
-  });
+  const buttons = busyButtons(
+    ["runTrainingMatrixBtn", "runTrainingMatrixBtnTraining", "runTrainingMatrixBtnPanel"],
+    "训练中...",
+  );
+  let finished = false;
   try {
-    showToast("正在多轮训练选优");
+    const labelCount = 3;
+    showOperationStatus("正在多轮训练选优，会依次训练多个标签集。", {
+      title: "多模型选优",
+      detail: `预计训练 ${labelCount} 个标签集，完成后自动上线最优`,
+      estimateSeconds: labelCount * 240,
+      progress: 5,
+    });
     const res = await fetch("/api/admin/training-matrix/run", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -1208,7 +1966,8 @@ async function runTrainingMatrix() {
     const suffix = best.top50_hit_rate !== undefined && best.top50_hit_rate !== null
       ? `，Top50 ${Math.round(best.top50_hit_rate * 100)}%`
       : "";
-    showToast(`已训练 ${payload.completed_count || 0} 个模型并上线最优${suffix}`);
+    completeOperationStatus(`多模型选优完成：已训练 ${payload.completed_count || 0} 个模型${suffix}`);
+    finished = true;
     await loadOverview({ silent: true });
     setView("metrics");
     return payload;
@@ -1217,9 +1976,12 @@ async function runTrainingMatrix() {
     await loadOverview({ silent: true });
     throw error;
   } finally {
-    buttons.forEach((button) => {
-      button.disabled = false;
-    });
+    if (finished) {
+      window.setTimeout(hideOperationStatus, 900);
+    } else {
+      hideOperationStatus();
+    }
+    restoreButtons(buttons);
   }
 }
 
@@ -1314,7 +2076,7 @@ async function activateFirstApproved() {
   await mutateModel(model.model_id, "activate");
 }
 
-async function mutateModel(modelId, action, { reload = true } = {}) {
+async function mutateModel(modelId, action, { reload = true, showSuccessToast = true, showErrorToast = true } = {}) {
   try {
     const res = await fetch(`/api/admin/models/${encodeURIComponent(modelId)}/${action}`, {
       method: "POST",
@@ -1326,25 +2088,31 @@ async function mutateModel(modelId, action, { reload = true } = {}) {
       throw new Error(payload.detail || `操作失败：${res.status}`);
     }
     const names = {activate: "已上线", approve: "已通过", reject: "已拒绝", deactivate: "已下线", archive: "已归档"};
-    showToast(`${names[action] || "已更新"} ${shortId(modelId)}`);
+    if (showSuccessToast) {
+      showToast(`${names[action] || "已更新"} ${shortId(modelId)}`);
+    }
     if (reload) {
       await loadOverview({ silent: true });
     }
     return payload;
   } catch (error) {
-    showToast(error.message || "操作失败");
+    if (showErrorToast) {
+      showToast(error.message || "操作失败");
+    }
     throw error;
   }
 }
 
 function handleCoachAction(action) {
   const handlers = {
+    openBackfill: () => openAdminView("training", "matrix"),
     queueTrain: queueTrainingRun,
     runQueued: runFirstQueuedTraining,
     trainApproveActivate,
     approveCandidate: approveFirstCandidate,
     activateApproved: activateFirstApproved,
     runPrediction,
+    runValidation,
   };
   const handler = handlers[action];
   if (handler) {
@@ -1383,13 +2151,13 @@ async function rollbackModel() {
 
 window.addEventListener("DOMContentLoaded", () => {
   bindDatePickers();
+  bindHelpTooltips();
   document.querySelectorAll(".nav-item").forEach((item) => {
     item.addEventListener("click", () => setView(item.dataset.view));
   });
-  const initialView = window.location.hash.replace("#", "");
-  if (initialView) {
-    setView(initialView);
-  }
+  syncViewFromHash();
+  window.addEventListener("hashchange", syncViewFromHash);
+  setTrainingTab(state.trainingTab);
   bindOptional("refreshBtn", "click", () => loadOverview());
   bindOptional("refreshBtnMetrics", "click", () => loadOverview());
   bindOptional("rollbackModelBtn", "click", rollbackModel);
@@ -1397,7 +2165,9 @@ window.addEventListener("DOMContentLoaded", () => {
   bindOptional("queueTrainBtn", "click", queueTrainingRun);
   bindOptional("queueTrainBtnTraining", "click", queueTrainingRun);
   bindOptional("runQueuedBtn", "click", runFirstQueuedTraining);
+  bindOptional("runQueuedBtnTraining", "click", runFirstQueuedTraining);
   bindOptional("trainApproveActivateBtn", "click", trainApproveActivate);
+  bindOptional("trainApproveActivateBtnTraining", "click", trainApproveActivate);
   bindOptional("backfillHistoryBtn", "click", backfillHistory);
   bindOptional("runTrainingMatrixBtn", "click", runTrainingMatrix);
   bindOptional("runTrainingMatrixBtnTraining", "click", runTrainingMatrix);
@@ -1413,12 +2183,55 @@ window.addEventListener("DOMContentLoaded", () => {
     }
     handleCoachAction(button.dataset.coachAction);
   });
+  bindOptional("stepGuide", "click", (event) => {
+    const actionButton = event.target.closest("[data-guide-action]");
+    if (actionButton) {
+      handleCoachAction(actionButton.dataset.guideAction);
+      return;
+    }
+    const viewButton = event.target.closest("[data-guide-view]");
+    if (viewButton) {
+      openAdminView(viewButton.dataset.guideView, viewButton.dataset.guideTrainingTab || "");
+    }
+  });
+  bindOptional("trainingTabs", "click", (event) => {
+    const button = event.target.closest("[data-training-tab]");
+    if (!button) {
+      return;
+    }
+    setTrainingTab(button.dataset.trainingTab);
+  });
+  document.addEventListener("click", (event) => {
+    const viewButton = event.target.closest("[data-admin-view]");
+    if (viewButton) {
+      openAdminView(viewButton.dataset.adminView, viewButton.dataset.adminTrainingTab || "");
+      return;
+    }
+    const tabButton = event.target.closest("[data-training-tab-target]");
+    if (tabButton) {
+      setTrainingTab(tabButton.dataset.trainingTabTarget);
+    }
+  });
   bindOptional("modelsBody", "click", (event) => {
     const button = event.target.closest("[data-model-action]");
     if (!button) {
       return;
     }
     mutateModel(button.dataset.modelId, button.dataset.modelAction);
+  });
+  bindOptional("activeModelPanel", "click", (event) => {
+    const button = event.target.closest("[data-model-action]");
+    if (!button) {
+      return;
+    }
+    mutateModel(button.dataset.modelId, button.dataset.modelAction);
+  });
+  bindOptional("modelsPagination", "click", (event) => {
+    const button = event.target.closest("[data-model-page-action]");
+    if (!button || button.disabled) {
+      return;
+    }
+    changeModelPage(button.dataset.modelPageAction);
   });
   bindOptional("runsBody", "click", (event) => {
     const button = event.target.closest("[data-run-action]");

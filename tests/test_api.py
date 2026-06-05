@@ -360,6 +360,12 @@ def test_training_run_executes_pipeline_and_registers_candidate_model(
     assert "market_hit_rate" in payload["run"]["metrics"]["ranking"]["validation"]
     assert payload["pipeline"]["status"] == "completed"
 
+    rerun = client.post(f"/api/admin/training-runs/{queued['run_id']}/run")
+    assert rerun.status_code == 200
+    assert rerun.json()["reused"] is True
+    assert rerun.json()["model"]["model_id"] == payload["model"]["model_id"]
+    assert len(client.get("/api/admin/models").json()["items"]) == 1
+
 
 def test_history_backfill_fetches_missing_daily_rows(
     isolated_app: tuple[TestClient, Path],

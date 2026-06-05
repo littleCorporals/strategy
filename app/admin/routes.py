@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import os
 from urllib.parse import urlparse
@@ -60,6 +61,10 @@ async def require_admin_access(
 
 
 router = APIRouter(dependencies=[Depends(require_admin_access)])
+
+
+async def _run_pipeline_in_worker(coro_factory: Any) -> dict[str, Any]:
+    return await asyncio.to_thread(lambda: asyncio.run(coro_factory()))
 
 
 async def pipeline_overview() -> dict[str, Any]:
@@ -265,9 +270,10 @@ async def create_training_run(payload: TrainingRunRequest) -> dict[str, Any]:
 @router.post("/api/admin/training-runs/{run_id}/run")
 async def run_training(run_id: str) -> dict[str, Any]:
     try:
-        return await model_pipeline.run_training_pipeline(run_id)
+        return await _run_pipeline_in_worker(lambda: model_pipeline.run_training_pipeline(run_id))
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        status_code = 404 if "不存在" in str(exc) else 409
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -287,14 +293,16 @@ async def backfill_history(payload: HistoryBackfillRequest) -> dict[str, Any]:
 @router.post("/api/admin/training-matrix/run")
 async def run_training_matrix(payload: TrainingMatrixRequest) -> dict[str, Any]:
     try:
-        return await model_pipeline.run_training_matrix(
-            dataset_version=payload.dataset_version,
-            feature_sets=payload.feature_sets,
-            label_sets=payload.label_sets,
-            train_windows=payload.train_windows or None,
-            params=payload.params,
-            activate_best=payload.activate_best,
-            notes=payload.notes,
+        return await _run_pipeline_in_worker(
+            lambda: model_pipeline.run_training_matrix(
+                dataset_version=payload.dataset_version,
+                feature_sets=payload.feature_sets,
+                label_sets=payload.label_sets,
+                train_windows=payload.train_windows or None,
+                params=payload.params,
+                activate_best=payload.activate_best,
+                notes=payload.notes,
+            )
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
