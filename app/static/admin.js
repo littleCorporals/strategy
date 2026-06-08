@@ -414,7 +414,7 @@ function modelActions(item) {
 function renderModels(models) {
   const body = $("modelsBody");
   if (!models.length) {
-    body.innerHTML = emptyRow("暂无其它模型版本。训练候选模型后会显示在这里。", 4);
+    body.innerHTML = emptyRow("暂无其它模型版本。训练候选模型后会显示在这里。", 5);
     renderModelPagination(0, 0, 0, 1);
     return;
   }
@@ -451,12 +451,14 @@ function renderModels(models) {
           <td class="model-cell-metrics">
             ${renderModelMetricBars(summary, "compact")}
           </td>
-          <td class="model-cell-side">
+          <td class="model-cell-status">
+            <div class="model-status-panel">
+              ${badge(item.status)}
+              <small>${escapeHtml(item.created_at)}</small>
+            </div>
+          </td>
+          <td class="model-cell-actions">
             <div class="model-action-panel">
-              <div class="model-side-top">
-                ${badge(item.status)}
-                <small>${escapeHtml(item.created_at)}</small>
-              </div>
               ${modelActions(item)}
             </div>
           </td>
