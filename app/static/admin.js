@@ -485,6 +485,16 @@ function modelMetricRows(summary) {
   ];
 }
 
+function progressStatusClass(tone) {
+  if (tone === "red") {
+    return "ant-progress-status-exception";
+  }
+  if (tone === "green") {
+    return "ant-progress-status-success";
+  }
+  return "ant-progress-status-normal";
+}
+
 function renderModelMetricBars(summary, variant = "compact") {
   const rows = modelMetricRows(summary);
   const visibleRows = variant === "compact" ? rows.filter((row) => row.label !== "Loss") : rows;
@@ -493,14 +503,27 @@ function renderModelMetricBars(summary, variant = "compact") {
       ${visibleRows
         .map((row) => {
           const width = stylePct(row.width);
+          const now = numberValue(row.width) ?? 0;
+          const ariaValue = Math.round(Math.max(0, Math.min(100, now)) * 10) / 10;
           return `
-            <div class="model-metric-bar">
-              <div class="metric-bar-head">
+            <div class="model-metric-bar ant-metric-progress-card" data-progress-tone="${escapeHtml(row.tone)}">
+              <div class="ant-metric-progress-head">
                 <span>${escapeHtml(row.label)}</span>
-                <strong>${escapeHtml(row.value)}</strong>
               </div>
-              <div class="metric-bar-track">
-                <span class="metric-bar-fill ${escapeHtml(row.tone)}" style="width: ${escapeHtml(width)};"></span>
+              <div
+                class="ant-progress ant-progress-line ant-progress-show-info ant-progress-default ${progressStatusClass(row.tone)}"
+                role="progressbar"
+                aria-label="${escapeHtml(row.label)}"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow="${escapeHtml(ariaValue)}"
+              >
+                <div class="ant-progress-outer">
+                  <div class="ant-progress-inner">
+                    <div class="ant-progress-bg" style="width: ${escapeHtml(width)}; height: 10px;"></div>
+                  </div>
+                </div>
+                <span class="ant-progress-text">${escapeHtml(row.value)}</span>
               </div>
             </div>
           `;

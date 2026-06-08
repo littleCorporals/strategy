@@ -1067,6 +1067,80 @@ th {
   background: var(--red);
 }
 
+.ant-metric-progress-card {
+  min-width: 0;
+  display: grid;
+  align-content: center;
+  gap: 8px;
+}
+
+.ant-metric-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ant-progress {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  line-height: 1;
+}
+
+.ant-progress-outer {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.ant-progress-inner {
+  position: relative;
+  width: 100%;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 100px;
+  background: #f0f0f0;
+}
+
+.ant-progress-bg {
+  max-width: 100%;
+  min-width: 0;
+  border-radius: 100px;
+  background: #1677ff;
+  transition: width 0.3s cubic-bezier(0.78, 0.14, 0.15, 0.86);
+}
+
+.ant-progress-status-success .ant-progress-bg {
+  background: #52c41a;
+}
+
+.ant-progress-status-exception .ant-progress-bg {
+  background: #ff4d4f;
+}
+
+.ant-metric-progress-card[data-progress-tone="amber"] .ant-progress-bg {
+  background: #faad14;
+}
+
+.ant-metric-progress-card[data-progress-tone="neutral"] .ant-progress-bg {
+  background: #8c8c8c;
+}
+
+.ant-progress-text {
+  flex: 0 0 56px;
+  width: 56px;
+  color: rgba(0, 0, 0, 0.88);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-align: right;
+  white-space: nowrap;
+}
+
 .pagination {
   flex: 0 0 auto;
   min-height: 50px;
@@ -3986,32 +4060,38 @@ canvas {
   background: #fbfcfe;
 }
 
-[data-view-panel="models"] .model-metric-bars.compact .metric-bar-head,
-[data-view-panel="models"] .model-metric-bars.featured .metric-bar-head {
-  margin-bottom: 9px;
-}
-
-[data-view-panel="models"] .model-metric-bars.compact .metric-bar-head span,
-[data-view-panel="models"] .model-metric-bars.featured .metric-bar-head span {
+[data-view-panel="models"] .model-metric-bars.compact .ant-metric-progress-head,
+[data-view-panel="models"] .model-metric-bars.featured .ant-metric-progress-head {
+  min-height: 16px;
   color: #475467;
   font-weight: 700;
 }
 
-[data-view-panel="models"] .model-metric-bars.compact .metric-bar-head strong,
-[data-view-panel="models"] .model-metric-bars.featured .metric-bar-head strong {
-  font-size: 14px;
+[data-view-panel="models"] .model-metric-bars.compact .ant-progress,
+[data-view-panel="models"] .model-metric-bars.featured .ant-progress {
+  gap: 10px;
 }
 
-[data-view-panel="models"] .model-metric-bars.compact .metric-bar-track,
-[data-view-panel="models"] .model-metric-bars.featured .metric-bar-track {
-  height: 11px;
+[data-view-panel="models"] .model-metric-bars.compact .ant-progress-inner,
+[data-view-panel="models"] .model-metric-bars.featured .ant-progress-inner {
+  height: 12px;
   background: #e4ebf3;
   box-shadow: inset 0 0 0 1px rgba(102, 112, 133, 0.12);
 }
 
-[data-view-panel="models"] .model-metric-bars.compact .metric-bar-fill,
-[data-view-panel="models"] .model-metric-bars.featured .metric-bar-fill {
+[data-view-panel="models"] .model-metric-bars.compact .ant-progress-bg,
+[data-view-panel="models"] .model-metric-bars.featured .ant-progress-bg {
+  height: 12px !important;
   box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+}
+
+[data-view-panel="models"] .model-metric-bars.compact .ant-progress-text,
+[data-view-panel="models"] .model-metric-bars.featured .ant-progress-text {
+  flex-basis: 60px;
+  width: 60px;
+  color: #182230;
+  font-size: 14px;
+  font-weight: 700;
 }
 
 [data-view-panel="models"] .pagination {
