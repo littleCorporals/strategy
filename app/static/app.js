@@ -808,7 +808,11 @@ function renderModelReference() {
   els.modelReference.append(
     el("div", { className: "model-reference-main" }, [
       el("span", { text: "Active Model" }),
-      el("strong", { text: `${shortModelId(ref.model_id)} / ${ref.feature_set || "--"} / ${ref.label_set || "--"}` }),
+      el("div", { className: "model-reference-id" }, [
+        el("strong", { text: shortModelId(ref.model_id) }),
+        el("small", { text: ref.feature_set || "--" }),
+        el("small", { text: ref.label_set || "--" }),
+      ]),
       el("p", { text: ref.objective_note || "模型只作为候选召回参考。" }),
     ]),
     el("div", { className: "model-reference-metrics" }, [

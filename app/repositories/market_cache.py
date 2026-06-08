@@ -46,8 +46,9 @@ async def save_rows(
     *,
     complete: bool = False,
     default_trade_date: str = "",
+    source: str = "tushare",
 ) -> None:
-    await db_cache.save_rows(interface, rows, complete=complete, default_trade_date=default_trade_date)
+    await db_cache.save_rows(interface, rows, complete=complete, default_trade_date=default_trade_date, source=source)
 
 
 async def mark_complete(interface: str, trade_date: str, row_count: int, source: str) -> None:

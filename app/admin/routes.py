@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from app.core.config import ADMIN_TOKEN_ENV, STATIC_DIR
 from app.db import model_repo
-from app.repositories import market_cache
+from app.services import data_gateway
 from app.services import model_pipeline
 from modeling.features.registry import list_feature_sets
 from modeling.labels.builder import label_horizon
@@ -76,7 +76,7 @@ async def pipeline_overview() -> dict[str, Any]:
 
 async def workflow_state() -> dict[str, Any]:
     active = await model_repo.active_model()
-    latest_market_date = await market_cache.latest_trade_date("daily")
+    latest_market_date = await data_gateway.latest_trade_date("daily")
     active_model_id = str(active["model_id"]) if active else None
     latest_prediction_date = await model_repo.latest_prediction_trade_date(active_model_id)
     suggested_prediction_date = latest_market_date or ""
@@ -135,6 +135,17 @@ class TrainingMatrixRequest(BaseModel):
     train_windows: list[dict[str, Any]] = Field(default_factory=list)
     params: dict[str, Any] = Field(default_factory=dict)
     activate_best: bool = False
+    notes: str = ""
+
+
+class ContinuousTrainingRequest(BaseModel):
+    rounds: int = Field(default=3, ge=1, le=20)
+    dataset_version: str = Field(default="market_cache_v1", min_length=1)
+    feature_sets: list[str] = Field(default_factory=list)
+    label_sets: list[str] = Field(default_factory=list)
+    train_windows: list[dict[str, Any]] = Field(default_factory=list)
+    params: dict[str, Any] = Field(default_factory=dict)
+    activate_if_better: bool = True
     notes: str = ""
 
 
@@ -301,6 +312,25 @@ async def run_training_matrix(payload: TrainingMatrixRequest) -> dict[str, Any]:
                 train_windows=payload.train_windows or None,
                 params=payload.params,
                 activate_best=payload.activate_best,
+                notes=payload.notes,
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/api/admin/training-continuous/run")
+async def run_continuous_training(payload: ContinuousTrainingRequest) -> dict[str, Any]:
+    try:
+        return await _run_pipeline_in_worker(
+            lambda: model_pipeline.run_continuous_training(
+                rounds=payload.rounds,
+                dataset_version=payload.dataset_version,
+                feature_sets=payload.feature_sets or None,
+                label_sets=payload.label_sets or None,
+                train_windows=payload.train_windows or None,
+                params=payload.params,
+                activate_if_better=payload.activate_if_better,
                 notes=payload.notes,
             )
         )

@@ -8,8 +8,8 @@ from typing import Any
 from fastapi import HTTPException
 
 from app.clients import cninfo_client, tushare_client
-from app.core.config import CACHE_TTL_SECONDS, DAILY_REFRESH_AFTER
-from app.repositories import market_cache
+from app.core.config import DAILY_REFRESH_AFTER
+from app.services import data_gateway
 
 
 DAILY_FIELDS = "ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount"
@@ -26,7 +26,7 @@ STK_FACTOR_FIELDS = (
 )
 DATE_RE = re.compile(r"^\d{8}$")
 
-_cache: dict[tuple[Any, ...], tuple[float, Any]] = {}
+_cache = data_gateway._memory_cache
 _stock_basic_cache: tuple[float, dict[str, dict[str, Any]]] | None = None
 
 
@@ -70,19 +70,11 @@ def normalize_fields(fields: str | None, default: str = DAILY_FIELDS) -> str:
 
 
 def cache_get(key: tuple[Any, ...]) -> Any | None:
-    cached = _cache.get(key)
-    if not cached:
-        return None
-    created_at, value = cached
-    if time.monotonic() - created_at > CACHE_TTL_SECONDS:
-        _cache.pop(key, None)
-        return None
-    return value
+    return data_gateway.cache_get(key)
 
 
 def cache_set(key: tuple[Any, ...], value: Any) -> Any:
-    _cache[key] = (time.monotonic(), value)
-    return value
+    return data_gateway.cache_set(key, value)
 
 
 def refresh_after_parts() -> tuple[int, int]:
@@ -123,12 +115,11 @@ def latest_fetchable_trade_date(end_date: str) -> str:
 
 
 def mark_data_source(interface: str, trade_date: str, source: str) -> None:
-    _cache[("data-source", interface, trade_date)] = (time.monotonic(), source)
+    data_gateway.remember_source(interface, trade_date, source)
 
 
 def data_source(interface: str, trade_date: str) -> str:
-    source = cache_get(("data-source", interface, trade_date))
-    return str(source or "database")
+    return data_gateway.data_source(interface, trade_date)
 
 
 async def call_daily(**kwargs: Any) -> list[dict[str, Any]]:
@@ -153,22 +144,22 @@ async def stock_basic_map(allow_online: bool = True) -> dict[str, dict[str, Any]
         if not cached_basic and age < 60:
             return cached_basic
 
-    db_rows = await market_cache.fetch_rows("stock_basic", trade_date="")
-    if db_rows:
-        basic = {str(row.get("ts_code")): row for row in db_rows if row.get("ts_code")}
-        _stock_basic_cache = (time.monotonic(), basic)
-        return basic
-
-    if not allow_online:
-        return {}
-
     try:
-        rows = await tushare_client.call(
+        result = await data_gateway.sync_complete_rows(
             "stock_basic",
-            exchange="",
-            list_status="L",
-            fields="ts_code,name,industry,area,market,list_date",
-            timeout=25,
+            "",
+            fields=ALLOWED_QUERY_FIELDS["stock_basic"],
+            cache_key=("stock-basic", ALLOWED_QUERY_FIELDS["stock_basic"]),
+            allow_online=allow_online,
+            online_fetch=lambda: call_named_api(
+                "stock_basic",
+                exchange="",
+                list_status="L",
+                fields=ALLOWED_QUERY_FIELDS["stock_basic"],
+                timeout=25,
+            ),
+            default_trade_date="",
+            persist_empty=False,
         )
     except Exception:
         if _stock_basic_cache and _stock_basic_cache[1]:
@@ -176,14 +167,13 @@ async def stock_basic_map(allow_online: bool = True) -> dict[str, dict[str, Any]
         _stock_basic_cache = (time.monotonic(), {})
         return {}
 
-    await market_cache.save_rows("stock_basic", rows, complete=True, default_trade_date="")
-    basic = {str(row.get("ts_code")): row for row in rows if row.get("ts_code")}
+    basic = {str(row.get("ts_code")): row for row in result.rows if row.get("ts_code")}
     _stock_basic_cache = (time.monotonic(), basic)
     return basic
 
 
 async def cached_stock_basic_map() -> dict[str, dict[str, Any]]:
-    db_rows = await market_cache.fetch_rows("stock_basic", trade_date="")
+    db_rows = await data_gateway.read_rows("stock_basic", trade_date="")
     return {str(row.get("ts_code")): row for row in db_rows if row.get("ts_code")}
 
 
@@ -261,65 +251,33 @@ async def daily_rows(trade_date: str, fields: str | None = None) -> list[dict[st
     if cached is not None:
         return cached
 
-    db_rows = await market_cache.fetch_rows(
+    result = await data_gateway.sync_complete_rows(
         "daily",
-        trade_date=trade_date,
+        trade_date,
         fields=normalized_fields,
-        require_complete=True,
+        allow_online=online_fetch_allowed_for_trade_date(trade_date),
+        online_fetch=lambda: call_daily(trade_date=trade_date, fields=normalized_fields),
+        persist_empty=should_persist_empty_trade_date(trade_date),
     )
-    if db_rows:
-        rows = await attach_cached_stock_basic(db_rows)
-        mark_data_source("daily", trade_date, "database")
-        return cache_set(key, rows)
-    state = await market_cache.complete_state("daily", trade_date)
-    if state and int(state["row_count"]) <= 0:
-        mark_data_source("daily", trade_date, str(state["source"] or "empty"))
-        return cache_set(key, [])
-
-    if not online_fetch_allowed_for_trade_date(trade_date):
-        mark_data_source("daily", trade_date, "not_ready")
-        return cache_set(key, [])
-
-    rows = await call_daily(trade_date=trade_date, fields=normalized_fields)
-    await market_cache.save_rows("daily", rows, complete=True, default_trade_date=trade_date)
-    if not rows and should_persist_empty_trade_date(trade_date):
-        await market_cache.mark_complete("daily", trade_date, 0, "tushare_empty")
-    rows = await attach_stock_basic(rows)
-    mark_data_source("daily", trade_date, "online")
+    rows = result.rows
+    if rows:
+        rows = await attach_stock_basic(rows) if result.source == "online" else await attach_cached_stock_basic(rows)
     return cache_set(key, rows)
 
 
 async def daily_rows_raw(trade_date: str, fields: str | None = None) -> list[dict[str, Any]]:
     normalized_fields = normalize_fields(fields, HISTORY_FIELDS)
     key = ("daily-raw", trade_date, normalized_fields)
-    cached = cache_get(key)
-    if cached is not None:
-        return cached
-
-    db_rows = await market_cache.fetch_rows(
+    result = await data_gateway.sync_complete_rows(
         "daily",
-        trade_date=trade_date,
+        trade_date,
         fields=normalized_fields,
-        require_complete=True,
+        cache_key=key,
+        allow_online=online_fetch_allowed_for_trade_date(trade_date),
+        online_fetch=lambda: call_daily(trade_date=trade_date, fields=normalized_fields),
+        persist_empty=should_persist_empty_trade_date(trade_date),
     )
-    if db_rows:
-        mark_data_source("daily", trade_date, "database")
-        return cache_set(key, db_rows)
-    state = await market_cache.complete_state("daily", trade_date)
-    if state and int(state["row_count"]) <= 0:
-        mark_data_source("daily", trade_date, str(state["source"] or "empty"))
-        return cache_set(key, [])
-
-    if not online_fetch_allowed_for_trade_date(trade_date):
-        mark_data_source("daily", trade_date, "not_ready")
-        return cache_set(key, [])
-
-    rows = await call_daily(trade_date=trade_date, fields=normalized_fields)
-    await market_cache.save_rows("daily", rows, complete=True, default_trade_date=trade_date)
-    if not rows and should_persist_empty_trade_date(trade_date):
-        await market_cache.mark_complete("daily", trade_date, 0, "tushare_empty")
-    mark_data_source("daily", trade_date, "online")
-    return cache_set(key, rows)
+    return result.rows
 
 
 async def daily_basic_map(trade_date: str) -> dict[str, dict[str, Any]]:
@@ -329,31 +287,15 @@ async def daily_basic_map(trade_date: str) -> dict[str, dict[str, Any]]:
     if cached is not None:
         return cached
 
-    db_rows = await market_cache.fetch_rows(
+    result = await data_gateway.sync_complete_rows(
         "daily_basic",
-        trade_date=trade_date,
+        trade_date,
         fields=fields,
-        require_complete=True,
+        allow_online=online_fetch_allowed_for_trade_date(trade_date),
+        online_fetch=lambda: call_query("daily_basic", trade_date=trade_date, fields=fields),
+        persist_empty=should_persist_empty_trade_date(trade_date),
     )
-    if db_rows:
-        mapping = {str(row.get("ts_code")): row for row in db_rows if row.get("ts_code")}
-        mark_data_source("daily_basic", trade_date, "database")
-        return cache_set(key, mapping)
-    state = await market_cache.complete_state("daily_basic", trade_date)
-    if state and int(state["row_count"]) <= 0:
-        mark_data_source("daily_basic", trade_date, str(state["source"] or "empty"))
-        return cache_set(key, {})
-
-    if not online_fetch_allowed_for_trade_date(trade_date):
-        mark_data_source("daily_basic", trade_date, "not_ready")
-        return cache_set(key, {})
-
-    rows = await call_query("daily_basic", trade_date=trade_date, fields=fields)
-    await market_cache.save_rows("daily_basic", rows, complete=True, default_trade_date=trade_date)
-    if not rows and should_persist_empty_trade_date(trade_date):
-        await market_cache.mark_complete("daily_basic", trade_date, 0, "tushare_empty")
-    mapping = {str(row.get("ts_code")): row for row in rows if row.get("ts_code")}
-    mark_data_source("daily_basic", trade_date, "online")
+    mapping = {str(row.get("ts_code")): row for row in result.rows if row.get("ts_code")}
     return cache_set(key, mapping)
 
 
@@ -402,24 +344,22 @@ async def stock_history(
     if cached is not None:
         return cached
 
-    db_rows = await market_cache.fetch_rows(
+    result = await data_gateway.read_or_sync_rows(
         "daily",
         ts_code=ts_code,
         start_date=start_date,
         end_date=fetchable_end,
         fields=normalized_fields,
+        allow_online=online_fetch_allowed_for_trade_date(fetchable_end),
+        online_fetch=lambda: call_daily(
+            ts_code=ts_code,
+            start_date=start_date,
+            end_date=fetchable_end,
+            fields=normalized_fields,
+        ),
+        accept_cached=lambda rows: len(rows) >= min(days, 20),
     )
-    if len(db_rows) >= min(days, 20):
-        db_rows.sort(key=lambda row: str(row.get("trade_date") or ""))
-        return cache_set(key, db_rows[-days:])
-
-    rows = await call_daily(
-        ts_code=ts_code,
-        start_date=start_date,
-        end_date=fetchable_end,
-        fields=normalized_fields,
-    )
-    await market_cache.save_rows("daily", rows, complete=False)
+    rows = result.rows
     rows.sort(key=lambda row: str(row.get("trade_date") or ""))
     return cache_set(key, rows[-days:])
 
@@ -433,21 +373,16 @@ async def single_query_row(interface: str, **params: Any) -> dict[str, Any] | No
 
     trade_date = params.get("trade_date")
     ts_code = params.get("ts_code")
-    if trade_date and ts_code:
-        db_rows = await market_cache.fetch_rows(
-            interface,
-            trade_date=str(trade_date),
-            ts_code=str(ts_code),
-            fields=fields,
-        )
-        if db_rows:
-            return cache_set(key, db_rows[0])
-        if not online_fetch_allowed_for_trade_date(str(trade_date)):
-            return cache_set(key, None)
-
-    rows = await call_query(interface, fields=fields, **params)
-    await market_cache.save_rows(interface, rows, complete=False, default_trade_date=str(trade_date or ""))
-    row = rows[0] if rows else None
+    result = await data_gateway.read_or_sync_rows(
+        interface,
+        trade_date=str(trade_date) if trade_date and ts_code else None,
+        ts_code=str(ts_code) if ts_code else None,
+        fields=fields,
+        allow_online=online_fetch_allowed_for_trade_date(str(trade_date)) if trade_date else True,
+        online_fetch=lambda: call_query(interface, fields=fields, **params),
+        default_trade_date=str(trade_date or ""),
+    )
+    row = result.rows[0] if result.rows else None
     return cache_set(key, row)
 
 
@@ -468,39 +403,28 @@ async def latest_raw_daily_rows(
 
 async def stk_factor_rows(trade_date: str) -> list[dict[str, Any]]:
     key = ("stk-factor-pro", trade_date, STK_FACTOR_FIELDS)
-    cached = cache_get(key)
-    if cached is not None:
-        return cached
-    db_rows = await market_cache.fetch_rows(
+
+    async def fetch_factor() -> list[dict[str, Any]]:
+        try:
+            return await call_named_api(
+                "stk_factor_pro",
+                trade_date=trade_date,
+                fields=STK_FACTOR_FIELDS,
+                timeout=75,
+            )
+        except HTTPException:
+            return []
+
+    result = await data_gateway.sync_complete_rows(
         "stk_factor_pro",
-        trade_date=trade_date,
+        trade_date,
         fields=STK_FACTOR_FIELDS,
-        require_complete=True,
+        cache_key=key,
+        allow_online=online_fetch_allowed_for_trade_date(trade_date),
+        online_fetch=fetch_factor,
+        persist_empty=should_persist_empty_trade_date(trade_date),
     )
-    if db_rows:
-        mark_data_source("stk_factor_pro", trade_date, "database")
-        return cache_set(key, db_rows)
-    state = await market_cache.complete_state("stk_factor_pro", trade_date)
-    if state and int(state["row_count"]) <= 0:
-        mark_data_source("stk_factor_pro", trade_date, str(state["source"] or "empty"))
-        return cache_set(key, [])
-    if not online_fetch_allowed_for_trade_date(trade_date):
-        mark_data_source("stk_factor_pro", trade_date, "not_ready")
-        return cache_set(key, [])
-    try:
-        rows = await call_named_api(
-            "stk_factor_pro",
-            trade_date=trade_date,
-            fields=STK_FACTOR_FIELDS,
-            timeout=75,
-        )
-    except HTTPException:
-        rows = []
-    await market_cache.save_rows("stk_factor_pro", rows, complete=True, default_trade_date=trade_date)
-    if not rows and should_persist_empty_trade_date(trade_date):
-        await market_cache.mark_complete("stk_factor_pro", trade_date, 0, "tushare_empty")
-    mark_data_source("stk_factor_pro", trade_date, "online")
-    return cache_set(key, rows)
+    return result.rows
 
 
 async def latest_factor_rows(
@@ -573,43 +497,38 @@ async def query_rows_cached(interface: str, params: dict[str, Any]) -> tuple[lis
 
     if interface == "stock_basic":
         rows = list((await stock_basic_map()).values())
-        return market_cache.project_fields(rows, fields), "database"
+        return data_gateway.project_fields(rows, fields), "database"
 
     if trade_date and not (ts_code or start_date or end_date):
-        db_rows = await market_cache.fetch_rows(
+        result = await data_gateway.sync_complete_rows(
             interface,
-            trade_date=str(trade_date),
+            str(trade_date),
             fields=fields,
-            require_complete=True,
+            allow_online=online_fetch_allowed_for_trade_date(str(trade_date)),
+            online_fetch=lambda: call_query(interface, **params),
+            persist_empty=should_persist_empty_trade_date(str(trade_date)),
         )
-        if db_rows:
-            return db_rows, "database"
-        state = await market_cache.complete_state(interface, str(trade_date))
-        if state and int(state["row_count"]) <= 0:
-            return [], str(state["source"] or "empty")
-        if not online_fetch_allowed_for_trade_date(str(trade_date)):
-            return [], "not_ready"
-        rows = await call_query(interface, **params)
-        await market_cache.save_rows(interface, rows, complete=True, default_trade_date=str(trade_date))
-        if not rows and should_persist_empty_trade_date(str(trade_date)):
-            await market_cache.mark_complete(interface, str(trade_date), 0, "tushare_empty")
-        return rows, "online"
+        return result.rows, result.source
 
     if ts_code or start_date or end_date:
-        db_rows = await market_cache.fetch_rows(
+        result = await data_gateway.read_or_sync_rows(
             interface,
             ts_code=str(ts_code) if ts_code else None,
             start_date=str(start_date) if start_date else None,
             end_date=str(end_date) if end_date else None,
             fields=fields,
             limit=6000,
+            allow_online=online_fetch_allowed_for_trade_date(str(trade_date or end_date or today_trade_date())),
+            online_fetch=lambda: call_query(interface, **params),
+            default_trade_date=str(trade_date or ""),
         )
-        if db_rows:
-            return db_rows, "database"
-        fetch_date = str(trade_date or end_date or today_trade_date())
-        if not online_fetch_allowed_for_trade_date(fetch_date):
-            return [], "not_ready"
+        return result.rows, result.source
 
-    rows = await call_query(interface, **params)
-    await market_cache.save_rows(interface, rows, complete=False, default_trade_date=str(trade_date or ""))
-    return rows[:6000], "online"
+    result = await data_gateway.read_or_sync_rows(
+        interface,
+        fields=fields,
+        limit=6000,
+        online_fetch=lambda: call_query(interface, **params),
+        default_trade_date=str(trade_date or ""),
+    )
+    return result.rows, result.source

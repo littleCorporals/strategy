@@ -5,8 +5,7 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from app.clients import ai_client
-from app.repositories import market_cache
-from app.services import analysis, market_data
+from app.services import analysis, data_gateway, market_data
 from app.services import realtime_quote
 
 
@@ -384,7 +383,7 @@ def industry_trends(rows: list[dict[str, Any]], limit: int = 20) -> list[dict[st
 
 async def message_sources(ts_code: str, trade_date: str) -> dict[str, Any]:
     cache_key = f"{ts_code}:{trade_date}"
-    cached = await market_cache.get_payload("message_sources", cache_key)
+    cached = await data_gateway.get_payload("message_sources", cache_key)
     if cached is not None:
         return cached
 
@@ -399,7 +398,7 @@ async def message_sources(ts_code: str, trade_date: str) -> dict[str, Any]:
     except Exception as exc:
         sources["errors"].append(f"巨潮公告未取到：{exc}")
     sources["errors"].append("已停用 Tushare 付费新闻/公告接口，避免未授权请求触发临时封禁")
-    await market_cache.set_payload("message_sources", cache_key, sources)
+    await data_gateway.set_payload("message_sources", cache_key, sources)
     return sources
 
 

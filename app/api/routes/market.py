@@ -19,7 +19,6 @@ from app.core.config import (
     STATIC_DIR,
     TOKEN_ENV,
 )
-from app.repositories import market_cache
 from app.schemas.market import (
     BacktestResponse,
     HealthResponse,
@@ -34,6 +33,7 @@ from app.schemas.market import (
 )
 from app.services import analysis
 from app.services import backtest
+from app.services import data_gateway
 from app.services import market_data
 from app.services import ml_realtime_screen
 from app.services import recommendation
@@ -218,12 +218,12 @@ async def index() -> HTMLResponse:
 @router.get("/api/status", response_model=StatusResponse)
 async def status() -> dict[str, Any]:
     token = os.getenv(TOKEN_ENV)
-    db_stats = await market_cache.stats()
+    db_stats = await data_gateway.stats()
     safe_db_stats = {
         **db_stats,
         "path": "local sqlite cache" if db_stats.get("path") else "",
     }
-    latest_db_trade_date = await market_cache.latest_trade_date("daily")
+    latest_db_trade_date = await data_gateway.latest_trade_date("daily")
     default_trade_date = latest_db_trade_date or _latest_fetchable_trade_date(_today_trade_date())
     ts_status = market_data.tushare_status()
     return {

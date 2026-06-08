@@ -7,8 +7,7 @@ from typing import Any
 
 from app.core.config import DATA_DIR
 from app.db import model_repo
-from app.repositories import market_cache
-from app.services import analysis, market_data
+from app.services import analysis, data_gateway, market_data
 from modeling.datasets.supervised import build_supervised_samples
 from modeling.features.builder import build_feature_row
 from modeling.inference.baseline import predict_one
@@ -19,6 +18,7 @@ from modeling.training.baseline import train_baseline_model
 
 MODEL_ARTIFACT_DIR = DATA_DIR / "models"
 DEFAULT_MATRIX_LABEL_SETS = ("next_high_3pct_v1", "next_high_2pct_v1", "next_3d_high_3pct_v1")
+MIN_SCORE = (-999.0, -999.0, -999.0, 0)
 
 
 def _parse_yyyymmdd(value: str | None, field_name: str) -> date:
@@ -67,6 +67,17 @@ def _metric_summary(metrics: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _model_score(model: dict[str, Any] | None) -> tuple[float, float, float, int]:
+    if not model:
+        return MIN_SCORE
+    metrics = model.get("metrics") or {}
+    return _top50_score(metrics if isinstance(metrics, dict) else {})
+
+
+def _score_is_better(candidate: tuple[float, float, float, int], baseline: tuple[float, float, float, int]) -> bool:
+    return tuple(candidate) > tuple(baseline)
+
+
 async def backfill_daily_history(
     *,
     start_date: str,
@@ -94,7 +105,7 @@ async def backfill_daily_history(
     failed_days = 0
     total_rows = 0
     for trade_date in days:
-        state = await market_cache.complete_state("daily", trade_date)
+        state = await data_gateway.complete_state("daily", trade_date)
         if state:
             row_count = int(state["row_count"] or 0)
             total_rows += max(0, row_count)
@@ -140,7 +151,7 @@ async def backfill_daily_history(
 
 
 async def default_training_windows(max_windows: int = 1) -> list[dict[str, Any]]:
-    rows = await market_cache.fetch_rows("daily", fields="trade_date")
+    rows = await data_gateway.read_rows("daily", fields="trade_date")
     dates = sorted({str(row.get("trade_date") or "") for row in rows if row.get("trade_date")})
     if not dates:
         return [{"name": "all_cached", "train_start_date": None, "train_end_date": None}]
@@ -269,6 +280,107 @@ async def run_training_matrix(
     }
 
 
+async def run_continuous_training(
+    *,
+    rounds: int = 3,
+    dataset_version: str = "market_cache_v1",
+    feature_sets: list[str] | None = None,
+    label_sets: list[str] | None = None,
+    train_windows: list[dict[str, Any]] | None = None,
+    params: dict[str, Any] | None = None,
+    activate_if_better: bool = True,
+    notes: str = "",
+) -> dict[str, Any]:
+    total_rounds = min(20, max(1, int(rounds or 1)))
+    active = await model_repo.active_model()
+    active_feature = str(active.get("feature_set") or "") if active else ""
+    active_label = str(active.get("label_set") or "") if active else ""
+    selected_features = [item for item in (feature_sets or [active_feature or "short_swing_v2"]) if item]
+    selected_labels = [item for item in (label_sets or [active_label or "next_high_3pct_v1"]) if item]
+    windows = train_windows or await default_training_windows()
+    params = params or {}
+
+    baseline_model = active
+    baseline_score = _model_score(active)
+    rounds_payload: list[dict[str, Any]] = []
+    activated: list[dict[str, Any]] = []
+    completed_count = 0
+    failed_count = 0
+
+    for index in range(total_rounds):
+        matrix = await run_training_matrix(
+            dataset_version=dataset_version,
+            feature_sets=selected_features,
+            label_sets=selected_labels,
+            train_windows=windows,
+            params=params,
+            activate_best=False,
+            notes=notes or f"continuous training round {index + 1}/{total_rounds}",
+        )
+        completed_count += int(matrix.get("completed_count") or 0)
+        failed_count += int(matrix.get("failed_count") or 0)
+        best = matrix.get("best")
+        best_score = tuple(best.get("score") or MIN_SCORE) if isinstance(best, dict) else MIN_SCORE
+        improved = bool(best and _score_is_better(best_score, baseline_score))
+        activated_model = None
+        if activate_if_better and improved:
+            model_id = str((best.get("model") or {}).get("model_id") or "")
+            if model_id:
+                await model_repo.approve_model(model_id, reason="continuous training improved active model")
+                await model_repo.activate_model(model_id)
+                activated_model = await model_repo.get_model(model_id)
+                baseline_model = activated_model
+                baseline_score = _model_score(activated_model)
+                best["model"] = activated_model or best.get("model")
+                activated.append({"round": index + 1, "model": activated_model, "score": best_score})
+        rounds_payload.append(
+            {
+                "round": index + 1,
+                "ok": bool(matrix.get("ok")),
+                "completed_count": matrix.get("completed_count") or 0,
+                "failed_count": matrix.get("failed_count") or 0,
+                "best_model_id": (best.get("model") or {}).get("model_id") if isinstance(best, dict) else None,
+                "best_score": best_score,
+                "improved": improved,
+                "activated_model_id": activated_model.get("model_id") if activated_model else None,
+                "matrix_pipeline_id": (matrix.get("pipeline") or {}).get("pipeline_id"),
+            }
+        )
+
+    active_after = await model_repo.active_model()
+    pipeline = await model_repo.create_pipeline_run(
+        {
+            "pipeline_type": "continuous_training",
+            "status": "completed" if completed_count else "failed",
+            "payload": {
+                "rounds": total_rounds,
+                "completed_count": completed_count,
+                "failed_count": failed_count,
+                "activated_count": len(activated),
+                "active_before": active.get("model_id") if active else None,
+                "active_after": active_after.get("model_id") if active_after else None,
+                "feature_sets": selected_features,
+                "label_sets": selected_labels,
+                "windows": windows,
+                "round_items": rounds_payload,
+            },
+            "error": "" if completed_count else "continuous training produced no completed models",
+        }
+    )
+    return {
+        "ok": bool(completed_count),
+        "rounds": total_rounds,
+        "completed_count": completed_count,
+        "failed_count": failed_count,
+        "activated_count": len(activated),
+        "active_before": active,
+        "active_model": active_after,
+        "baseline_model": baseline_model,
+        "items": rounds_payload,
+        "pipeline": pipeline,
+    }
+
+
 async def run_training_pipeline(run_id: str) -> dict[str, Any]:
     run, claimed = await model_repo.claim_training_run(run_id)
     if not run:
@@ -285,7 +397,7 @@ async def run_training_pipeline(run_id: str) -> dict[str, Any]:
         raise ValueError("训练任务正在执行，请稍后刷新")
 
     try:
-        rows = await market_cache.fetch_rows(
+        rows = await data_gateway.read_rows(
             "daily",
             start_date=run.get("train_start_date"),
             end_date=run.get("train_end_date"),
@@ -473,7 +585,7 @@ async def run_daily_prediction(trade_date: str, *, limit: int = 500) -> dict[str
         raise ValueError("没有可预测的行情数据")
 
     start_date = market_data.previous_calendar_date(end_date)
-    rows = await market_cache.fetch_rows("daily", start_date="19000101", end_date=end_date)
+    rows = await data_gateway.read_rows("daily", start_date="19000101", end_date=end_date)
     by_code = _history_by_code(rows)
     predictions: list[dict[str, Any]] = []
     for row in day_rows:
@@ -532,7 +644,7 @@ async def available_validation_trade_days(
             if allow_online:
                 rows = await market_data.daily_rows_raw(day, market_data.HISTORY_FIELDS)
             else:
-                rows = await market_cache.fetch_rows(
+                rows = await data_gateway.read_rows(
                     "daily",
                     trade_date=day,
                     fields=market_data.HISTORY_FIELDS,
@@ -592,12 +704,12 @@ async def run_next_day_validation(trade_date: str) -> dict[str, Any]:
 
     label_set = str(model.get("label_set") or "next_high_3pct_v1")
     horizon = label_horizon(label_set)
-    current_rows = await market_cache.fetch_rows("daily", trade_date=trade_date)
+    current_rows = await data_gateway.read_rows("daily", trade_date=trade_date)
     available_days = await available_validation_trade_days(trade_date, horizon=horizon, allow_online=True)
     if len(available_days) < horizon:
         raise ValueError("预测日后的行情天数还不够，暂不能验证")
     next_date, next_rows = available_days[0]
-    all_rows = await market_cache.fetch_rows("daily", start_date=trade_date)
+    all_rows = await data_gateway.read_rows("daily", start_date=trade_date)
     by_code = _history_by_code(all_rows)
 
     current_map = {str(row.get("ts_code") or ""): row for row in current_rows}

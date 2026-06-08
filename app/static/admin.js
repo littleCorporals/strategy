@@ -19,7 +19,7 @@ function text(value, fallback = "-") {
 
 function shortId(value) {
   const raw = text(value);
-  return raw.length > 18 ? `${raw.slice(0, 15)}...` : raw;
+  return raw.length > 24 ? `${raw.slice(0, 13)}...${raw.slice(-6)}` : raw;
 }
 
 function badge(status) {
@@ -414,7 +414,7 @@ function modelActions(item) {
 function renderModels(models) {
   const body = $("modelsBody");
   if (!models.length) {
-    body.innerHTML = emptyRow("暂无其它模型版本。训练候选模型后会显示在这里。", 3);
+    body.innerHTML = emptyRow("暂无其它模型版本。训练候选模型后会显示在这里。", 4);
     renderModelPagination(0, 0, 0, 1);
     return;
   }
@@ -428,15 +428,15 @@ function renderModels(models) {
       const feature = featureDefinition(item.feature_set);
       const label = labelDefinition(item.label_set);
       return `
-        <tr>
+        <tr class="model-version-card">
           <td class="model-cell-main" title="${escapeHtml(item.model_id)}">
+            <span class="model-card-kicker">模型版本</span>
             <strong class="model-row-title">${escapeHtml(item.name || item.model_id)}</strong>
             <small class="model-row-id">${escapeHtml(shortId(item.model_id))}</small>
             <div class="model-sample-strip">
               <span><b>总样本</b>${escapeHtml(text(summary.sampleCount))}</span>
               <span><b>验证</b>${escapeHtml(text(summary.validationSampleCount))}</span>
             </div>
-            ${renderModelMetricBars(summary, "compact")}
           </td>
           <td class="model-cell-definition">
             <div class="model-definition-pair">
@@ -449,11 +449,16 @@ function renderModels(models) {
             </div>
           </td>
           <td class="model-cell-side">
-            <div class="model-side-top">
-              ${badge(item.status)}
-              <small>${escapeHtml(item.created_at)}</small>
+            <div class="model-action-panel">
+              <div class="model-side-top">
+                ${badge(item.status)}
+                <small>${escapeHtml(item.created_at)}</small>
+              </div>
+              ${modelActions(item)}
             </div>
-            ${modelActions(item)}
+          </td>
+          <td class="model-cell-metrics">
+            ${renderModelMetricBars(summary, "compact")}
           </td>
         </tr>
       `;
@@ -486,19 +491,20 @@ function renderModelMetricBars(summary, variant = "compact") {
   return `
     <div class="model-metric-bars ${escapeHtml(variant)}">
       ${visibleRows
-        .map(
-          (row) => `
+        .map((row) => {
+          const width = stylePct(row.width);
+          return `
             <div class="model-metric-bar">
               <div class="metric-bar-head">
                 <span>${escapeHtml(row.label)}</span>
                 <strong>${escapeHtml(row.value)}</strong>
               </div>
               <div class="metric-bar-track">
-                <span class="metric-bar-fill ${escapeHtml(row.tone)}" style="--value: ${escapeHtml(row.width)};"></span>
+                <span class="metric-bar-fill ${escapeHtml(row.tone)}" style="width: ${escapeHtml(width)};"></span>
               </div>
             </div>
-          `,
-        )
+          `;
+        })
         .join("")}
     </div>
   `;
@@ -611,6 +617,30 @@ function compactMetricBlock(rows) {
   `;
 }
 
+function runModelRef(item) {
+  if (!item.model_id) {
+    return `<div class="run-model-ref empty-ref"><span>模型</span><strong>未生成</strong></div>`;
+  }
+  const model = (state.overview?.models || []).find((entry) => entry.model_id === item.model_id);
+  return `
+    <div class="run-model-ref" title="${escapeHtml(item.model_id)}">
+      <span>模型</span>
+      <strong>${escapeHtml(shortId(item.model_id))}</strong>
+      ${model?.status ? badge(model.status) : ""}
+      <button type="button" data-admin-view="models">查看</button>
+    </div>
+  `;
+}
+
+function runRecordMetric(label, value, helpKey) {
+  return `
+    <div class="run-record-metric">
+      <span>${helpKey ? helpLabel(label, helpKey) : escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `;
+}
+
 function renderRuns(runs) {
   const body = $("runsBody");
   if (!runs.length) {
@@ -620,31 +650,38 @@ function renderRuns(runs) {
   body.innerHTML = runs
     .map((item) => {
       const summary = metricSummary(item.metrics || {});
+      const params = paramSummary(item.params || {});
       return `
-        <tr>
-          <td title="${escapeHtml(item.run_id)}">
-            <strong>${escapeHtml(shortId(item.run_id))}</strong>
-            <small>${escapeHtml(item.created_at)}</small>
+        <tr class="run-record-row">
+          <td colspan="8">
+            <article class="run-record-card">
+              <div class="run-record-main" title="${escapeHtml(item.run_id)}">
+                <div class="run-record-eyebrow">
+                  ${badge(item.status)}
+                  ${runModelRef(item)}
+                </div>
+                <strong>${escapeHtml(shortId(item.run_id))}</strong>
+                <small>${escapeHtml(item.created_at || "-")}</small>
+              </div>
+              <div class="run-record-config">
+                <span>特征 / 标签</span>
+                <strong>${escapeHtml(item.feature_set)}</strong>
+                <small>${escapeHtml(item.label_set)}</small>
+                <p title="${escapeHtml(JSON.stringify(item.params || {}))}">参数：${escapeHtml(params)}</p>
+              </div>
+              <div class="run-record-metrics">
+                ${runRecordMetric("总样本", text(summary.sampleCount), "trainSamples")}
+                ${runRecordMetric("验证样本", text(summary.validationSampleCount), "samples")}
+                ${runRecordMetric("F1", percent(summary.f1), "validationF1")}
+                ${runRecordMetric("Loss", decimal(summary.logLoss, 4), "logLoss")}
+                ${runRecordMetric("Top50", percent(summary.top50HitRate), "top50")}
+                ${runRecordMetric("提升", signedPct(summary.top50Lift !== undefined && summary.top50Lift !== null ? summary.top50Lift * 100 : null), "top50Lift")}
+              </div>
+              <div class="run-record-actions">
+                ${runActions(item)}
+              </div>
+            </article>
           </td>
-          <td>${badge(item.status)}</td>
-          <td>
-            <strong>${escapeHtml(item.feature_set)}</strong>
-            <small>${escapeHtml(item.label_set)}</small>
-          </td>
-          <td>${compactMetricBlock([
-            ["总", text(summary.sampleCount), "trainSamples"],
-            ["验证", text(summary.validationSampleCount), "samples"],
-          ])}</td>
-          <td>${compactMetricBlock([
-            ["F1", percent(summary.f1), "validationF1"],
-            ["Loss", decimal(summary.logLoss, 4), "logLoss"],
-          ])}</td>
-          <td>${compactMetricBlock([
-            ["命中", percent(summary.top50HitRate), "top50"],
-            ["提升", signedPct(summary.top50Lift !== undefined && summary.top50Lift !== null ? summary.top50Lift * 100 : null), "top50Lift"],
-          ])}</td>
-          <td title="${escapeHtml(JSON.stringify(item.params || {}))}">${escapeHtml(paramSummary(item.params || {}))}</td>
-          <td>${runActions(item)}</td>
         </tr>
       `;
     })
@@ -840,7 +877,7 @@ function renderActiveModelPanel(model) {
   const feature = featureDefinition(model.feature_set);
   const label = labelDefinition(model.label_set);
   container.innerHTML = `
-    <div class="active-model-layout">
+    <div class="active-model-layout models-hero-layout">
       <div class="active-model-main">
         <div class="active-model-title">
           <span>当前使用中</span>
@@ -1272,6 +1309,15 @@ function boundedPct(value) {
   return Math.max(0, Math.min(100, number * 100));
 }
 
+function stylePct(value) {
+  const number = numberValue(value);
+  if (number === null) {
+    return "0%";
+  }
+  const bounded = Math.max(0, Math.min(100, number));
+  return `${Math.round(bounded * 100) / 100}%`;
+}
+
 function topMetric(item, size = "50") {
   return item.ranking?.top_n?.[size] || null;
 }
@@ -1347,9 +1393,9 @@ function renderRankingChart(topN, marketHitRate) {
                 <strong>Top${escapeHtml(size)}</strong>
                 <span>${escapeHtml(text(item.count, size))} 只</span>
               </div>
-              <div class="ranking-bar" style="--value: ${hitRate}; --market: ${market};">
-                <span class="ranking-bar-fill"></span>
-                <span class="ranking-market"></span>
+              <div class="ranking-bar">
+                <span class="ranking-bar-fill" style="width: ${escapeHtml(stylePct(hitRate))};"></span>
+                <span class="ranking-market" style="left: ${escapeHtml(stylePct(market))};"></span>
               </div>
               <div class="ranking-value">
                 <strong>${escapeHtml(percent(item.hit_rate))}</strong>
@@ -1466,8 +1512,8 @@ function renderWeightChart(weights) {
         <div class="weight-row ${tone}" title="${escapeHtml(item.feature)}">
           <div class="weight-rank">${index + 1}</div>
           <div class="weight-name">${escapeHtml(item.feature)}</div>
-          <div class="weight-bar-track" style="--weight: ${width};">
-            <span class="weight-bar-fill"></span>
+          <div class="weight-bar-track">
+            <span class="weight-bar-fill" style="width: ${escapeHtml(stylePct(width))};"></span>
           </div>
           <div class="weight-value">${escapeHtml(decimal(weight, 5))}</div>
         </div>
@@ -1985,6 +2031,58 @@ async function runTrainingMatrix() {
   }
 }
 
+async function runContinuousTraining() {
+  const buttons = busyButtons(
+    ["runContinuousTrainingBtn", "runContinuousTrainingBtnTraining", "runContinuousTrainingBtnPanel"],
+    "续训中...",
+  );
+  const rounds = 3;
+  let finished = false;
+  try {
+    showOperationStatus("正在围绕当前激活模型持续训练。", {
+      title: "持续训练",
+      detail: `连续训练 ${rounds} 轮，只在候选模型优于当前模型时自动上线`,
+      estimateSeconds: rounds * 260,
+      progress: 5,
+    });
+    const res = await fetch("/api/admin/training-continuous/run", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        rounds,
+        dataset_version: "market_cache_v1",
+        params: {validation_ratio: 0.2},
+        activate_if_better: true,
+        notes: "continuous training from admin",
+      }),
+    });
+    const payload = await res.json();
+    if (!res.ok) {
+      throw new Error(payload.detail || `持续训练失败：${res.status}`);
+    }
+    const active = shortId(payload.active_model?.model_id || "");
+    const suffix = payload.activated_count
+      ? `，上线 ${payload.activated_count} 次，当前 ${active}`
+      : "，没有发现优于当前模型的新版本";
+    completeOperationStatus(`持续训练完成：训练 ${payload.completed_count || 0} 个模型${suffix}`);
+    finished = true;
+    await loadOverview({ silent: true });
+    setView(payload.activated_count ? "metrics" : "models");
+    return payload;
+  } catch (error) {
+    showToast(error.message || "持续训练失败");
+    await loadOverview({ silent: true });
+    throw error;
+  } finally {
+    if (finished) {
+      window.setTimeout(hideOperationStatus, 1000);
+    } else {
+      hideOperationStatus();
+    }
+    restoreButtons(buttons);
+  }
+}
+
 function predictionTradeDate() {
   const value = toTradeDate($("predictionDateInput")?.value);
   if (value) {
@@ -2172,6 +2270,9 @@ window.addEventListener("DOMContentLoaded", () => {
   bindOptional("runTrainingMatrixBtn", "click", runTrainingMatrix);
   bindOptional("runTrainingMatrixBtnTraining", "click", runTrainingMatrix);
   bindOptional("runTrainingMatrixBtnPanel", "click", runTrainingMatrix);
+  bindOptional("runContinuousTrainingBtn", "click", runContinuousTraining);
+  bindOptional("runContinuousTrainingBtnTraining", "click", runContinuousTraining);
+  bindOptional("runContinuousTrainingBtnPanel", "click", runContinuousTraining);
   bindOptional("approveCandidateBtn", "click", approveFirstCandidate);
   bindOptional("activateApprovedBtn", "click", activateFirstApproved);
   bindOptional("runPredictionBtn", "click", runPrediction);

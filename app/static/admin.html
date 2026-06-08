@@ -3,9 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Cache-Control" content="no-store" />
     <title>模型管理台</title>
-    <link rel="stylesheet" href="/static/admin.css?v=20260605-long-task-toast-1" />
-    <script src="/static/admin.js?v=20260605-long-task-toast-1" defer></script>
+    <link rel="stylesheet" href="/static/ui-refresh.css?v=20260608-progressfix-1" />
+    <script src="/static/admin.js?v=20260608-progressfix-1" defer></script>
   </head>
   <body>
     <main class="admin-shell">
@@ -208,6 +209,7 @@
                     <div class="step-actions">
                       <button id="runQueuedBtnTraining" type="button">执行待训练任务</button>
                       <button id="trainApproveActivateBtnTraining" type="button">一键训练并上线</button>
+                      <button id="runContinuousTrainingBtnTraining" type="button">持续训练当前模型</button>
                     </div>
                   </article>
 
@@ -278,6 +280,7 @@
                     <div class="step-actions">
                       <button id="runTrainingMatrixBtnPanel" type="button">多轮训练并上线最优</button>
                       <button id="runTrainingMatrixBtnTraining" type="button">只运行多模型选优</button>
+                      <button id="runContinuousTrainingBtnPanel" type="button">持续训练当前模型</button>
                     </div>
                   </article>
 
@@ -354,9 +357,10 @@
               <table class="models-table">
                 <thead>
                   <tr>
-                    <th>模型与指标</th>
+                    <th>模型</th>
                     <th>特征 / 标签</th>
                     <th>状态 / 操作</th>
+                    <th>指标进度</th>
                   </tr>
                 </thead>
                 <tbody id="modelsBody"></tbody>
@@ -410,7 +414,7 @@
             </div>
           </header>
 
-          <section class="page-card">
+          <section class="page-card monitor-table-card">
             <div class="table-wrap">
               <table>
                 <thead>
@@ -522,7 +526,7 @@
             </div>
           </header>
 
-          <section class="page-card">
+          <section class="page-card audit-list-card">
             <div class="event-list" id="eventList"></div>
           </section>
         </section>

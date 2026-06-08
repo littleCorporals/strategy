@@ -4,8 +4,7 @@ from datetime import datetime
 from typing import Any
 
 from app.core.config import CACHE_TTL_SECONDS
-from app.repositories import market_cache
-from app.services import analysis, market_data, recommendation
+from app.services import analysis, data_gateway, market_data, recommendation
 
 
 async def analysis_payload(ts_code: str, end_date: str) -> dict[str, Any]:
@@ -54,7 +53,7 @@ async def recommendation_payload(ts_code: str, end_date: str, ai_model_key: str 
         return cached
 
     db_key = f"v2:{ts_code}:{end_date}:{ai_model_key}"
-    db_cached = await market_cache.get_payload("stock_recommendation", db_key)
+    db_cached = await data_gateway.get_payload("stock_recommendation", db_key)
     if db_cached is not None:
         return market_data.cache_set(key, db_cached)
 
@@ -78,5 +77,5 @@ async def recommendation_payload(ts_code: str, end_date: str, ai_model_key: str 
         "cached_for_seconds": CACHE_TTL_SECONDS,
         "fetched_at": datetime.now().isoformat(timespec="seconds"),
     }
-    await market_cache.set_payload("stock_recommendation", db_key, payload)
+    await data_gateway.set_payload("stock_recommendation", db_key, payload)
     return market_data.cache_set(key, payload)
