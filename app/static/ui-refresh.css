@@ -3969,8 +3969,29 @@ canvas {
 
 [data-view-panel="models"] .models-table {
   display: table;
-  min-width: 1280px;
+  min-width: 1360px;
+  width: 100%;
   table-layout: fixed;
+}
+
+[data-view-panel="models"] .models-table col.models-col-main {
+  width: 21%;
+}
+
+[data-view-panel="models"] .models-table col.models-col-definition {
+  width: 24%;
+}
+
+[data-view-panel="models"] .models-table col.models-col-metrics {
+  width: 27%;
+}
+
+[data-view-panel="models"] .models-table col.models-col-status {
+  width: 10%;
+}
+
+[data-view-panel="models"] .models-table col.models-col-actions {
+  width: 18%;
 }
 
 [data-view-panel="models"] .models-table thead {
@@ -4000,26 +4021,6 @@ canvas {
 [data-view-panel="models"] .models-table tbody {
   display: table-row-group;
   padding: 0;
-}
-
-[data-view-panel="models"] .models-table th:nth-child(1) {
-  width: 22%;
-}
-
-[data-view-panel="models"] .models-table th:nth-child(2) {
-  width: 26%;
-}
-
-[data-view-panel="models"] .models-table th:nth-child(3) {
-  width: 27%;
-}
-
-[data-view-panel="models"] .models-table th:nth-child(4) {
-  width: 10%;
-}
-
-[data-view-panel="models"] .models-table th:nth-child(5) {
-  width: 15%;
 }
 
 [data-view-panel="models"] .models-table th:nth-child(5),
@@ -4131,6 +4132,9 @@ canvas {
 }
 
 [data-view-panel="models"] .model-cell-actions .row-actions {
+  width: max-content;
+  max-width: 100%;
+  display: inline-flex;
   flex-wrap: nowrap;
   justify-content: flex-end;
   gap: 6px;
