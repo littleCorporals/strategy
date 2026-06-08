@@ -448,6 +448,9 @@ function renderModels(models) {
               <small>${escapeHtml(label?.description || "未配置标签集说明")}</small>
             </div>
           </td>
+          <td class="model-cell-metrics">
+            ${renderModelMetricBars(summary, "compact")}
+          </td>
           <td class="model-cell-side">
             <div class="model-action-panel">
               <div class="model-side-top">
@@ -456,9 +459,6 @@ function renderModels(models) {
               </div>
               ${modelActions(item)}
             </div>
-          </td>
-          <td class="model-cell-metrics">
-            ${renderModelMetricBars(summary, "compact")}
           </td>
         </tr>
       `;
@@ -506,7 +506,7 @@ function renderModelMetricBars(summary, variant = "compact") {
           const now = numberValue(row.width) ?? 0;
           const ariaValue = Math.round(Math.max(0, Math.min(100, now)) * 10) / 10;
           return `
-            <div class="model-metric-bar ant-metric-progress-card" data-progress-tone="${escapeHtml(row.tone)}">
+            <div class="model-metric-bar ant-metric-progress-row" data-progress-tone="${escapeHtml(row.tone)}">
               <div class="ant-metric-progress-head">
                 <span>${escapeHtml(row.label)}</span>
               </div>

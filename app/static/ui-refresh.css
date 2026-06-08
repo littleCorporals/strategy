@@ -1067,7 +1067,7 @@ th {
   background: var(--red);
 }
 
-.ant-metric-progress-card {
+.ant-metric-progress-row {
   min-width: 0;
   display: grid;
   align-content: center;
@@ -1122,11 +1122,11 @@ th {
   background: #ff4d4f;
 }
 
-.ant-metric-progress-card[data-progress-tone="amber"] .ant-progress-bg {
+.ant-metric-progress-row[data-progress-tone="amber"] .ant-progress-bg {
   background: #faad14;
 }
 
-.ant-metric-progress-card[data-progress-tone="neutral"] .ant-progress-bg {
+.ant-metric-progress-row[data-progress-tone="neutral"] .ant-progress-bg {
   background: #8c8c8c;
 }
 
@@ -3963,28 +3963,83 @@ canvas {
 
 [data-view-panel="models"] .models-table-card {
   margin-top: 14px;
+  border-radius: var(--radius);
+  box-shadow: none;
+}
+
+[data-view-panel="models"] .models-table {
+  display: table;
+  min-width: 1120px;
+  table-layout: fixed;
+}
+
+[data-view-panel="models"] .models-table thead {
+  display: table-header-group;
 }
 
 [data-view-panel="models"] .models-table tbody {
-  gap: 12px;
-  padding: 12px;
+  display: table-row-group;
+  padding: 0;
+}
+
+[data-view-panel="models"] .models-table th:nth-child(1) {
+  width: 24%;
+}
+
+[data-view-panel="models"] .models-table th:nth-child(2) {
+  width: 28%;
+}
+
+[data-view-panel="models"] .models-table th:nth-child(3) {
+  width: 28%;
+}
+
+[data-view-panel="models"] .models-table th:nth-child(4) {
+  width: 20%;
+}
+
+[data-view-panel="models"] .models-table th:nth-child(4),
+[data-view-panel="models"] .models-table td:nth-child(4) {
+  position: sticky;
+  right: 0;
+  background: #fff;
+  box-shadow: -1px 0 0 #e5ebf2;
+}
+
+[data-view-panel="models"] .models-table th:nth-child(4) {
+  z-index: 4;
+}
+
+[data-view-panel="models"] .models-table td:nth-child(4) {
+  z-index: 2;
 }
 
 [data-view-panel="models"] .models-table tr.model-version-card {
-  grid-template-columns: minmax(0, 1fr) minmax(250px, 320px);
-  grid-template-areas:
-    "main side"
-    "definition side"
-    "metrics metrics";
-  gap: 0;
+  display: table-row;
   padding: 0;
-  overflow: hidden;
-  border-color: #dbe3ee;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.03);
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+  box-shadow: none;
+}
+
+[data-view-panel="models"] .models-table tr.model-version-card:hover td {
+  background: #fafcff;
+}
+
+[data-view-panel="models"] .models-table tr.model-version-card:hover td:nth-child(4) {
+  background: #fafcff;
+}
+
+[data-view-panel="models"] .models-table td {
+  display: table-cell;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e5ebf2;
+  vertical-align: top;
 }
 
 [data-view-panel="models"] .model-cell-main {
-  padding: 15px 16px 8px;
+  padding: 14px 16px;
 }
 
 [data-view-panel="models"] .model-card-kicker {
@@ -4000,23 +4055,28 @@ canvas {
 
 [data-view-panel="models"] .model-cell-definition {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  padding: 0 16px 14px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  padding: 14px 16px;
 }
 
 [data-view-panel="models"] .model-definition-pair {
-  min-height: 68px;
-  padding: 10px;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius);
-  background: #fbfcfe;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+[data-view-panel="models"] .model-definition-pair + .model-definition-pair {
+  padding-top: 8px;
+  border-top: 1px dashed #e5ebf2;
 }
 
 [data-view-panel="models"] .model-cell-side {
-  padding: 14px;
-  border-left: 1px solid var(--line-soft);
-  background: var(--models-action-bg);
+  padding: 14px 16px;
+  border-left: 0;
+  background: #fff;
 }
 
 .model-action-panel {
@@ -4040,29 +4100,33 @@ canvas {
 }
 
 [data-view-panel="models"] .model-cell-metrics {
-  padding: 12px 16px 14px;
+  padding: 14px 16px;
+  border-top: 0;
   background: #fff;
 }
 
-[data-view-panel="models"] .model-metric-bars.compact {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+[data-view-panel="models"] .model-metric-bars.compact,
+[data-view-panel="models"] .model-metric-bars.featured {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
 }
 
 [data-view-panel="models"] .model-metric-bars.compact .model-metric-bar,
 [data-view-panel="models"] .model-metric-bars.featured .model-metric-bar {
-  min-height: 66px;
+  min-height: 0;
   display: grid;
-  align-content: center;
-  padding: 11px 12px;
-  border: 1px solid #dbe3ee;
-  border-radius: var(--radius);
-  background: #fbfcfe;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 [data-view-panel="models"] .model-metric-bars.compact .ant-metric-progress-head,
 [data-view-panel="models"] .model-metric-bars.featured .ant-metric-progress-head {
-  min-height: 16px;
+  min-height: 0;
   color: #475467;
   font-weight: 700;
 }
