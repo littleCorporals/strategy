@@ -207,6 +207,10 @@ function bindDatePickers() {
     });
     input.addEventListener("paste", (event) => event.preventDefault());
     input.addEventListener("drop", (event) => event.preventDefault());
+    if (["predictionDateInput", "validationDateInput"].includes(input.id)) {
+      input.addEventListener("change", syncWorkflowButtons);
+      input.addEventListener("input", syncWorkflowButtons);
+    }
   });
 }
 
@@ -828,15 +832,22 @@ function renderWorkflow(payload) {
   if (hint) {
     const latestMarket = workflow.latest_market_date || "暂无";
     const latestPrediction = workflow.latest_prediction_date || "暂无";
-    const validationText = workflow.validation_ready
-      ? `可验证 ${workflow.suggested_validation_date || latestPrediction} 的预测。`
-      : workflow.validation_reason || "暂无可验证预测，或后续行情还没入库。";
+    const manualValidationDate = validationTradeDate();
+    const validationText = manualValidationDate
+      ? `将尝试验证 ${manualValidationDate} 的预测，需该日已有预测且后续行情已入库。`
+      : workflow.validation_ready
+        ? `可验证 ${workflow.suggested_validation_date || latestPrediction} 的预测。`
+        : workflow.validation_reason || "暂无可验证预测，或后续行情还没入库。";
     hint.textContent = `最新行情日 ${latestMarket}；最近预测日 ${latestPrediction}；${validationText}`;
   }
 
   const hasActive = Boolean(payload.active_model);
-  const canPredict = hasActive && Boolean(workflow.suggested_prediction_date);
-  const canValidate = hasActive && Boolean(workflow.suggested_validation_date) && Boolean(workflow.validation_ready);
+  const manualPredictionDate = Boolean(predictionTradeDate());
+  const manualValidationDate = Boolean(validationTradeDate());
+  const canPredict = hasActive && Boolean(workflow.suggested_prediction_date || manualPredictionDate);
+  const canValidate =
+    hasActive &&
+    (manualValidationDate || (Boolean(workflow.suggested_validation_date) && Boolean(workflow.validation_ready)));
   if ($("runPredictionBtn")) $("runPredictionBtn").disabled = !canPredict;
   if ($("runValidationBtn")) $("runValidationBtn").disabled = !canValidate;
 }
@@ -879,6 +890,90 @@ function syncWorkflowButtons() {
   if (state.overview) {
     renderWorkflow(state.overview);
   }
+}
+
+function configLabel(model) {
+  if (!model) {
+    return "暂无配置";
+  }
+  return `${text(model.model_type)} / ${text(model.feature_set)} / ${text(model.label_set)}`;
+}
+
+function modelScoreStrip(model) {
+  const summary = metricSummary(model?.metrics || {});
+  return `
+    <div class="iteration-score-strip">
+      <span><b>样本</b>${escapeHtml(text(summary.sampleCount))}</span>
+      <span><b>验证</b>${escapeHtml(text(summary.validationSampleCount))}</span>
+      <span><b>F1</b>${escapeHtml(percent(summary.f1))}</span>
+      <span><b>Top50</b>${escapeHtml(percent(summary.top50HitRate))}</span>
+      <span><b>提升</b>${escapeHtml(signedPct(numberValue(summary.top50Lift) !== null ? Number(summary.top50Lift) * 100 : null))}</span>
+    </div>
+  `;
+}
+
+function renderIterationPanel(containerId, payload) {
+  const container = $(containerId);
+  if (!container) {
+    return;
+  }
+  const active = payload.active_model || null;
+  const models = payload.models || [];
+  const candidate = findFirst(models, ["candidate"]) || findFirst(models, ["approved"]);
+  const workflow = payload.workflow || {};
+  const isTrainingPanel = containerId === "trainingIterationPanel";
+  const retrainButtonId = isTrainingPanel ? "retrainActiveTrainingBtn" : "retrainActiveBtn";
+
+  if (!active) {
+    container.innerHTML = `
+      <div class="iteration-layout empty-state">
+        <div class="iteration-main">
+          <span>模型迭代</span>
+          <h3>还没有使用中的模型</h3>
+          <p>先训练首版模型；后面每次重训都会生成新版本，旧版本保留用于回滚。</p>
+        </div>
+        <div class="iteration-actions">
+          <button type="button" data-iteration-action="trainApproveActivate">训练首版并上线</button>
+          <button type="button" data-iteration-action="openMatrix">先补历史数据</button>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="iteration-layout">
+      <div class="iteration-main">
+        <span>当前配置</span>
+        <h3>${escapeHtml(active.name || active.model_id)}</h3>
+        <p>${escapeHtml(configLabel(active))}</p>
+        ${modelScoreStrip(active)}
+      </div>
+      <div class="iteration-status-grid">
+        <div class="iteration-pane">
+          <span>新版本候选</span>
+          <strong>${escapeHtml(candidate ? candidate.name || candidate.model_id : "暂无候选")}</strong>
+          <p>${candidate ? `${escapeHtml(badge(candidate.status).replace(/<[^>]+>/g, ""))} · ${escapeHtml(shortId(candidate.model_id))}` : "重训当前配置后会出现在这里"}</p>
+        </div>
+        <div class="iteration-pane">
+          <span>预测验证</span>
+          <strong>${escapeHtml(workflow.validation_ready ? "有日期可验证" : workflow.latest_prediction_date ? "等待后续行情" : "待生成预测")}</strong>
+          <p>预测日 ${escapeHtml(workflow.latest_prediction_date || "-")} · 对比日 ${escapeHtml(workflow.validation_next_trade_date || "-")}</p>
+        </div>
+      </div>
+      <div class="iteration-actions">
+        <button id="${escapeHtml(retrainButtonId)}" type="button" data-iteration-action="retrainActive">重训当前配置</button>
+        <button type="button" data-iteration-action="openModels">对比版本</button>
+        <button type="button" data-iteration-action="runPrediction">生成预测</button>
+        <button type="button" data-iteration-action="runValidation" ${workflow.validation_ready ? "" : "disabled"}>验证预测</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderIterationPanels(payload) {
+  renderIterationPanel("iterationPanel", payload);
+  renderIterationPanel("trainingIterationPanel", payload);
 }
 
 function renderActiveModelPanel(model) {
@@ -947,6 +1042,7 @@ function renderOverview(payload) {
   $("stageCount").textContent = stages.length;
 
   renderActiveModelPanel(activeModel);
+  renderIterationPanels(payload);
   renderStepGuide(payload);
   renderModels(modelListItems());
   renderRuns(runs);
@@ -1802,15 +1898,18 @@ async function loadDiagnostics({ silent = false } = {}) {
   }
 }
 
-async function createTrainingRun() {
+async function createTrainingRun(overrides = {}) {
+  const featureSet = overrides.feature_set || $("featureSetInput")?.value || "short_swing_v2";
+  const labelSet = overrides.label_set || $("labelSetInput")?.value || "next_high_3pct_v1";
   const res = await fetch("/api/admin/training-runs", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({
       dataset_version: "market_cache_v1",
-      feature_set: $("featureSetInput")?.value || "short_swing_v2",
-      label_set: $("labelSetInput")?.value || "next_high_3pct_v1",
-      notes: "manual queued from admin",
+      feature_set: featureSet,
+      label_set: labelSet,
+      params: overrides.params || {},
+      notes: overrides.notes || "manual queued from admin",
     }),
   });
   const payload = await res.json();
@@ -1818,6 +1917,47 @@ async function createTrainingRun() {
     throw new Error(payload.detail || `创建失败：${res.status}`);
   }
   return payload.item;
+}
+
+async function retrainActiveConfig() {
+  const active = state.overview?.active_model;
+  if (!active) {
+    showToast("没有使用中的模型配置");
+    return;
+  }
+  const buttons = busyButtons(["retrainActiveBtn", "retrainActiveTrainingBtn"], "重训中...");
+  let finished = false;
+  try {
+    showOperationStatus("正在按当前配置重训，会生成候选新版本。", {
+      title: "重训当前配置",
+      detail: `${active.feature_set || "-"} / ${active.label_set || "-"}`,
+      estimateSeconds: 260,
+      progress: 8,
+    });
+    const run = await createTrainingRun({
+      feature_set: active.feature_set || "short_swing_v2",
+      label_set: active.label_set || "next_high_3pct_v1",
+      params: active.params || {},
+      notes: `retrain active config from ${active.model_id}`,
+    });
+    updateOperationStatus("训练任务已创建，正在生成候选新版本。", { progress: 18 });
+    const trained = await runTraining(run.run_id, { reload: false, showSuccessToast: false, showErrorToast: false });
+    updateOperationStatus("候选新版本已生成，正在刷新版本列表。", { progress: 96 });
+    await loadOverview({ silent: true });
+    setView("models");
+    completeOperationStatus(`已生成候选新版本 ${shortId(trained?.model?.model_id || "")}`);
+    finished = true;
+  } catch (error) {
+    showToast(error.message || "重训失败");
+    await loadOverview({ silent: true });
+  } finally {
+    if (finished) {
+      window.setTimeout(hideOperationStatus, 900);
+    } else {
+      hideOperationStatus();
+    }
+    restoreButtons(buttons);
+  }
 }
 
 async function queueTrainingRun() {
@@ -2229,8 +2369,11 @@ async function mutateModel(modelId, action, { reload = true, showSuccessToast = 
 function handleCoachAction(action) {
   const handlers = {
     openBackfill: () => openAdminView("training", "matrix"),
+    openMatrix: () => openAdminView("training", "matrix"),
+    openModels: () => openAdminView("models"),
     queueTrain: queueTrainingRun,
     runQueued: runFirstQueuedTraining,
+    retrainActive: retrainActiveConfig,
     trainApproveActivate,
     approveCandidate: approveFirstCandidate,
     activateApproved: activateFirstApproved,
@@ -2308,6 +2451,15 @@ window.addEventListener("DOMContentLoaded", () => {
       return;
     }
     handleCoachAction(button.dataset.coachAction);
+  });
+  ["iterationPanel", "trainingIterationPanel"].forEach((id) => {
+    bindOptional(id, "click", (event) => {
+      const button = event.target.closest("[data-iteration-action]");
+      if (!button || button.disabled) {
+        return;
+      }
+      handleCoachAction(button.dataset.iterationAction);
+    });
   });
   bindOptional("stepGuide", "click", (event) => {
     const actionButton = event.target.closest("[data-guide-action]");

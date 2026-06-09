@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta http-equiv="Cache-Control" content="no-store" />
     <title>模型管理台</title>
-    <link rel="stylesheet" href="/static/ui-refresh.css?v=20260608-colalign-2" />
-    <script src="/static/admin.js?v=20260608-colalign-2" defer></script>
+    <link rel="stylesheet" href="/static/ui-refresh.css?v=20260609-iteration-1" />
+    <script src="/static/admin.js?v=20260609-iteration-1" defer></script>
   </head>
   <body>
     <main class="admin-shell">
@@ -25,8 +25,8 @@
             <small>下一步</small>
           </button>
           <button class="nav-item" type="button" data-view="training">
-            <span>训练任务</span>
-            <small>队列</small>
+            <span>模型迭代</span>
+            <small>重训</small>
           </button>
           <button class="nav-item" type="button" data-view="models">
             <span>模型版本</span>
@@ -65,7 +65,7 @@
             <div>
               <span>Overview</span>
               <h2>模型工作台</h2>
-              <p>按当前状态处理下一步，复杂明细放到左侧菜单里。</p>
+              <p>先看当前版本，再决定重训、验证或上线。</p>
             </div>
             <div class="page-actions">
               <button id="refreshBtn" type="button">刷新</button>
@@ -100,6 +100,8 @@
             </div>
           </section>
 
+          <section class="page-card iteration-card" id="iterationPanel"></section>
+
           <section class="page-card guide-card">
             <div class="section-title">
               <div>
@@ -120,31 +122,33 @@
           <header class="page-head">
             <div>
               <span>Training</span>
-              <h2>训练任务</h2>
-              <p>把训练和换代单独放在这里。先选训练方式，再按步骤执行。</p>
+              <h2>模型迭代</h2>
+              <p>固定当前配置重训时会生成新版本，原使用中版本不会被覆盖。</p>
             </div>
           </header>
 
           <section class="training-workbench">
             <section class="page-card training-tabs-card">
               <div class="training-tabs" id="trainingTabs" aria-label="训练方式切换">
-                <button class="training-tab active" type="button" data-training-tab="single">单模型训练</button>
-                <button class="training-tab" type="button" data-training-tab="matrix">多模型选优</button>
+                <button class="training-tab active" type="button" data-training-tab="single">重训当前配置</button>
+                <button class="training-tab" type="button" data-training-tab="matrix">比较多个方向</button>
                 <button class="training-tab" type="button" data-training-tab="records">训练记录</button>
               </div>
             </section>
 
             <section class="training-panel active" data-training-panel="single">
+              <section class="page-card iteration-card training-iteration-card" id="trainingIterationPanel"></section>
+
               <section class="page-card workflow-card">
                 <div class="section-title">
                   <div>
-                    <h3>单模型训练步骤</h3>
-                    <p>适合你想固定一个标签，持续训练和换代时使用。</p>
+                    <h3>固定配置训练步骤</h3>
+                    <p>需要手动选择配置时，再按下面步骤创建训练任务。</p>
                   </div>
                 </div>
                 <div class="workflow-note">
                   <strong>建议节奏：</strong>
-                  <span>先回填历史行情准备样本，再选标签、新建任务、执行训练。训练完成后去“模型版本”审批和上线。</span>
+                  <span>重训当前配置用上方按钮；想改标签或特征时，再在这里手动选择并新建任务。</span>
                 </div>
                 <div class="training-step-grid">
                   <article class="training-step-card">
@@ -235,8 +239,8 @@
               <section class="page-card workflow-card">
                 <div class="section-title">
                   <div>
-                    <h3>多模型选优步骤</h3>
-                    <p>适合你想让系统自动比较多个标签，再把最优版本上线。</p>
+                    <h3>比较多个方向</h3>
+                    <p>适合补了历史数据后，重新比较不同标签并选择表现最好的方向。</p>
                   </div>
                 </div>
                 <div class="workflow-note">
@@ -408,7 +412,7 @@
             </details>
             <div class="form-actions">
               <button id="runPredictionBtn" type="button">用最新行情生成预测</button>
-              <button id="runValidationBtn" type="button">验证最近可验证预测</button>
+              <button id="runValidationBtn" type="button">验证预测结果</button>
             </div>
           </section>
         </section>
