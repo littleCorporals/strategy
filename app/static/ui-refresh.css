@@ -1352,8 +1352,9 @@ tr.selected td {
 }
 
 .compact-list {
-  min-height: 220px;
-  max-height: clamp(220px, calc(100vh - 356px), 520px);
+  min-height: 0;
+  max-height: clamp(180px, calc(100vh - 356px), 340px);
+  align-content: start;
   overflow: auto;
 }
 

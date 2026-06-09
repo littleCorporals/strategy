@@ -710,8 +710,9 @@ input {
 }
 
 .compact-list {
-  max-height: clamp(220px, calc(100vh - 356px), 520px);
-  min-height: 220px;
+  max-height: clamp(180px, calc(100vh - 356px), 340px);
+  min-height: 0;
+  align-content: start;
   overflow: auto;
 }
 

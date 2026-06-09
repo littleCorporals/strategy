@@ -146,6 +146,10 @@ def test_admin_overview_has_model_management_sections(isolated_app: tuple[TestCl
     assert "workflow" in payload
     assert "suggested_prediction_date" in payload["workflow"]
     assert "suggested_validation_date" in payload["workflow"]
+    label_ids = {item["id"] for item in payload["label_sets"]}
+    assert "next_high_3pct_no_deep_drawdown_v1" in label_ids
+    assert "next_low_drawdown_3pct_v1" in label_ids
+    assert "next_open_gap_down_2pct_v1" in label_ids
 
 
 def test_training_run_can_be_queued(isolated_app: tuple[TestClient, Path]) -> None:
@@ -567,6 +571,26 @@ def test_multi_day_label_builds_samples() -> None:
     assert three_day[0]["label_end_trade_date"] == "20240109"
     assert three_day[0]["label"] == 1
     assert three_day[0]["window_high_pct"] is not None
+
+
+def test_tradeable_and_risk_labels_build_expected_values() -> None:
+    from modeling.labels.builder import build_label
+
+    signal = {"close": 10.0}
+    safe_next = {"open": 9.95, "high": 10.35, "low": 9.75, "close": 10.1}
+    risky_next = {"open": 9.75, "high": 10.5, "low": 9.65, "close": 9.9}
+    boundary_next = {"open": 9.8, "high": 10.35, "low": 9.7, "close": 10.0}
+    incomplete_next = {"open": 10.1, "high": 10.5, "close": 10.2}
+
+    assert build_label(signal, safe_next, "next_high_3pct_no_deep_drawdown_v1") == 1
+    assert build_label(signal, risky_next, "next_high_3pct_no_deep_drawdown_v1") == 0
+    assert build_label(signal, boundary_next, "next_high_3pct_no_deep_drawdown_v1") == 1
+    assert build_label(signal, boundary_next, "next_low_drawdown_3pct_v1") == 0
+    assert build_label(signal, boundary_next, "next_open_gap_down_2pct_v1") == 0
+    assert build_label(signal, incomplete_next, "next_high_3pct_no_deep_drawdown_v1") == 0
+    assert build_label(signal, safe_next, "next_close_positive_v1") == 1
+    assert build_label(signal, risky_next, "next_low_drawdown_3pct_v1") == 1
+    assert build_label(signal, risky_next, "next_open_gap_down_2pct_v1") == 1
 
 
 def test_short_swing_v2_adds_enhanced_daily_features() -> None:
